@@ -1,0 +1,21 @@
+{
+  "name": "@cadence/infra",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy:dev": "cdk deploy -c stage=dev",
+    "deploy:prod": "cdk deploy -c stage=prod"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.218.0",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "aws-cdk": "^2.218.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
+}
