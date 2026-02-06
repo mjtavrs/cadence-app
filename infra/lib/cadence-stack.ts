@@ -120,6 +120,7 @@ export class CadenceStack extends Stack {
       },
       environment: {
         COGNITO_USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
+        APP_TABLE_NAME: appTable.tableName,
       },
     } as const;
 
@@ -143,7 +144,17 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
-    for (const fn of [loginFn, refreshFn, meFn, newPasswordFn]) {
+    const listWorkspacesFn = new NodejsFunction(this, "ListWorkspacesFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/list.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const setActiveWorkspaceFn = new NodejsFunction(this, "SetActiveWorkspaceFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/set-active.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    for (const fn of [loginFn, refreshFn, meFn, newPasswordFn, listWorkspacesFn, setActiveWorkspaceFn]) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
@@ -153,11 +164,18 @@ export class CadenceStack extends Stack {
       );
     }
 
+    appTable.grantReadWriteData(listWorkspacesFn);
+    appTable.grantReadWriteData(setActiveWorkspaceFn);
+
     const auth = api.root.addResource("auth");
     auth.addResource("login").addMethod("POST", new apigateway.LambdaIntegration(loginFn));
     auth.addResource("refresh").addMethod("POST", new apigateway.LambdaIntegration(refreshFn));
     auth.addResource("new-password").addMethod("POST", new apigateway.LambdaIntegration(newPasswordFn));
     auth.addResource("me").addMethod("GET", new apigateway.LambdaIntegration(meFn));
+
+    const workspaces = api.root.addResource("workspaces");
+    workspaces.addMethod("GET", new apigateway.LambdaIntegration(listWorkspacesFn));
+    workspaces.addResource("active").addMethod("POST", new apigateway.LambdaIntegration(setActiveWorkspaceFn));
 
     new CfnOutput(this, "Stage", { value: props.stage });
     new CfnOutput(this, "Region", { value: Stack.of(this).region });
