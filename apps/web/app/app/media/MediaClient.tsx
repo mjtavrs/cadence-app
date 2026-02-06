@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -44,27 +45,83 @@ async function loadMedia() {
   return data.items ?? [];
 }
 
-export function MediaClient(props: { initialItems: MediaItem[] }) {
+export function MediaClient(props: { initialItems?: MediaItem[] }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const queryClient = useQueryClient();
 
-  const [items, setItems] = useState<MediaItem[]>(props.initialItems);
-  const [uploading, setUploading] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const mediaQuery = useQuery({
+    queryKey: ["media"],
+    queryFn: loadMedia,
+    initialData: props.initialItems,
+    staleTime: 30_000,
+  });
+
+  const items = mediaQuery.data ?? [];
   const canUpload = useMemo(() => items.length < 30, [items.length]);
 
-  async function refresh() {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await loadMedia());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao carregar mídias.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const presignRes = await fetch("/api/media/presign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contentType: file.type,
+          fileName: file.name,
+          sizeBytes: file.size,
+        }),
+      });
+
+      const presignPayload = (await presignRes.json().catch(() => null)) as unknown;
+      if (!presignRes.ok) {
+        throw new Error(getErrorMessage(presignPayload) ?? "Falha ao preparar upload.");
+      }
+
+      const presign = presignPayload as PresignResponse;
+
+      const uploadRes = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "content-type": file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Falha no upload para o S3.");
+      }
+
+      const createRes = await fetch("/api/media", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mediaId: presign.mediaId,
+          s3Key: presign.s3Key,
+          contentType: file.type,
+          sizeBytes: file.size,
+          fileName: file.name,
+        }),
+      });
+
+      const createPayload = (await createRes.json().catch(() => null)) as unknown;
+      if (!createRes.ok) {
+        throw new Error(getErrorMessage(createPayload) ?? "Falha ao registrar mídia.");
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["media"] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/media/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar mídia.");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["media"] });
+    },
+  });
 
   async function onPickFile(file: File) {
     setError(null);
@@ -82,72 +139,23 @@ export function MediaClient(props: { initialItems: MediaItem[] }) {
       return;
     }
 
-    setUploading(true);
-
-    const presignRes = await fetch("/api/media/presign", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contentType: file.type,
-        fileName: file.name,
-        sizeBytes: file.size,
-      }),
-    });
-
-    const presignPayload = (await presignRes.json().catch(() => null)) as unknown;
-    if (!presignRes.ok) {
-      setError(getErrorMessage(presignPayload) ?? "Falha ao preparar upload.");
-      setUploading(false);
-      return;
+    try {
+      await uploadMutation.mutateAsync(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao enviar imagem.");
     }
-
-    const presign = presignPayload as PresignResponse;
-
-    const uploadRes = await fetch(presign.uploadUrl, {
-      method: "PUT",
-      headers: { "content-type": file.type },
-      body: file,
-    });
-
-    if (!uploadRes.ok) {
-      setError("Falha no upload para o S3.");
-      setUploading(false);
-      return;
-    }
-
-    const createRes = await fetch("/api/media", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        mediaId: presign.mediaId,
-        s3Key: presign.s3Key,
-        contentType: file.type,
-        sizeBytes: file.size,
-        fileName: file.name,
-      }),
-    });
-
-    const createPayload = (await createRes.json().catch(() => null)) as unknown;
-    if (!createRes.ok) {
-      setError(getErrorMessage(createPayload) ?? "Falha ao registrar mídia.");
-      setUploading(false);
-      return;
-    }
-
-    await refresh();
-    setUploading(false);
   }
 
   async function deleteItem(id: string) {
     setError(null);
-    const res = await fetch(`/api/media/${encodeURIComponent(id)}`, { method: "DELETE" });
-    const payload = (await res.json().catch(() => null)) as unknown;
-    if (!res.ok) {
-      setError(getErrorMessage(payload) ?? "Falha ao deletar mídia.");
-      return;
+    try {
+      await deleteMutation.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao deletar mídia.");
     }
-    await refresh();
   }
+
+  const isBusy = mediaQuery.isFetching || uploadMutation.isPending || deleteMutation.isPending;
 
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
@@ -172,8 +180,8 @@ export function MediaClient(props: { initialItems: MediaItem[] }) {
               e.target.value = "";
             }}
           />
-          <Button disabled={uploading || loading || !canUpload} onClick={() => inputRef.current?.click()}>
-            {uploading ? (
+          <Button disabled={isBusy || !canUpload} onClick={() => inputRef.current?.click()}>
+            {uploadMutation.isPending ? (
               <span className="flex items-center gap-2">
                 <Spinner className="h-4 w-4" />
                 Enviando...
@@ -187,7 +195,7 @@ export function MediaClient(props: { initialItems: MediaItem[] }) {
 
       {error && <p className="text-destructive text-sm">{error}</p>}
 
-      {loading ? (
+      {mediaQuery.isLoading ? (
         <div className="text-muted-foreground text-sm">Carregando...</div>
       ) : items.length === 0 ? (
         <Empty>
@@ -196,7 +204,7 @@ export function MediaClient(props: { initialItems: MediaItem[] }) {
             <EmptyDescription>Envie a primeira imagem para usar em posts.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button disabled={uploading || !canUpload} onClick={() => inputRef.current?.click()}>
+            <Button disabled={isBusy || !canUpload} onClick={() => inputRef.current?.click()}>
               Enviar imagem
             </Button>
           </EmptyContent>

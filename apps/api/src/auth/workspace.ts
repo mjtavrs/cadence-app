@@ -1,7 +1,6 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getDocClient, getTableName } from "../db/dynamo";
-
-type Role = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";
+import type { Role } from "./rbac";
 
 type WorkspaceMembershipItem = {
   PK: string;

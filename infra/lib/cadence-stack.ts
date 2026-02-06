@@ -175,6 +175,46 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const createPostFn = new NodejsFunction(this, "CreatePostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/create.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const listPostsFn = new NodejsFunction(this, "ListPostsFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/list.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const getPostFn = new NodejsFunction(this, "GetPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/get.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const updatePostFn = new NodejsFunction(this, "UpdatePostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/update.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const submitPostFn = new NodejsFunction(this, "SubmitPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/submit.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const approvePostFn = new NodejsFunction(this, "ApprovePostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/approve.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const schedulePostFn = new NodejsFunction(this, "SchedulePostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/schedule.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const cancelPostFn = new NodejsFunction(this, "CancelPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/cancel.ts"),
+      ...apiHandlerDefaults,
+    });
+
     for (const fn of [
       loginFn,
       refreshFn,
@@ -186,6 +226,14 @@ export class CadenceStack extends Stack {
       createMediaFn,
       listMediaFn,
       deleteMediaFn,
+      createPostFn,
+      listPostsFn,
+      getPostFn,
+      updatePostFn,
+      submitPostFn,
+      approvePostFn,
+      schedulePostFn,
+      cancelPostFn,
     ]) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
@@ -202,6 +250,14 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(createMediaFn);
     appTable.grantReadWriteData(listMediaFn);
     appTable.grantReadWriteData(deleteMediaFn);
+    appTable.grantReadWriteData(createPostFn);
+    appTable.grantReadWriteData(listPostsFn);
+    appTable.grantReadWriteData(getPostFn);
+    appTable.grantReadWriteData(updatePostFn);
+    appTable.grantReadWriteData(submitPostFn);
+    appTable.grantReadWriteData(approvePostFn);
+    appTable.grantReadWriteData(schedulePostFn);
+    appTable.grantReadWriteData(cancelPostFn);
 
     mediaBucket.grantPut(presignMediaFn);
     mediaBucket.grantRead(listMediaFn);
@@ -222,6 +278,17 @@ export class CadenceStack extends Stack {
     media.addMethod("POST", new apigateway.LambdaIntegration(createMediaFn));
     media.addMethod("GET", new apigateway.LambdaIntegration(listMediaFn));
     media.addResource("{id}").addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFn));
+
+    const posts = api.root.addResource("posts");
+    posts.addMethod("POST", new apigateway.LambdaIntegration(createPostFn));
+    posts.addMethod("GET", new apigateway.LambdaIntegration(listPostsFn));
+    const postById = posts.addResource("{id}");
+    postById.addMethod("GET", new apigateway.LambdaIntegration(getPostFn));
+    postById.addMethod("PUT", new apigateway.LambdaIntegration(updatePostFn));
+    postById.addResource("submit").addMethod("POST", new apigateway.LambdaIntegration(submitPostFn));
+    postById.addResource("approve").addMethod("POST", new apigateway.LambdaIntegration(approvePostFn));
+    postById.addResource("schedule").addMethod("POST", new apigateway.LambdaIntegration(schedulePostFn));
+    postById.addResource("cancel").addMethod("POST", new apigateway.LambdaIntegration(cancelPostFn));
 
     new CfnOutput(this, "Stage", { value: props.stage });
     new CfnOutput(this, "Region", { value: Stack.of(this).region });

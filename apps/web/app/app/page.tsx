@@ -16,6 +16,9 @@ export default async function AppHomePage() {
           <a href="/api/auth/me">Testar sessão (me)</a>
         </Button>
         <Button variant="secondary" asChild>
+          <Link href="/app/posts">Posts</Link>
+        </Button>
+        <Button variant="secondary" asChild>
           <Link href="/app/media">Mídia</Link>
         </Button>
         <Button variant="secondary" asChild>
