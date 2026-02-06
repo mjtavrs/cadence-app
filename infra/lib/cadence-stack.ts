@@ -1,8 +1,13 @@
 import { Duration, RemovalPolicy, Stack, StackProps, Tags, CfnOutput } from "aws-cdk-lib";
 import { Construct } from "constructs";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as path from "node:path";
 
 type Stage = "dev" | "prod";
 
@@ -93,11 +98,73 @@ export class CadenceStack extends Stack {
       refreshTokenValidity: Duration.days(30),
     });
 
+    const api = new apigateway.RestApi(this, "Api", {
+      restApiName: `cadence-${props.stage}`,
+      deployOptions: {
+        stageName: props.stage,
+      },
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: ["content-type", "authorization"],
+      },
+    });
+
+    const apiHandlerDefaults = {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "handler",
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: "node22",
+      },
+      environment: {
+        COGNITO_USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
+      },
+    } as const;
+
+    const loginFn = new NodejsFunction(this, "AuthLoginFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/auth/login.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const refreshFn = new NodejsFunction(this, "AuthRefreshFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/auth/refresh.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const meFn = new NodejsFunction(this, "AuthMeFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/auth/me.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const newPasswordFn = new NodejsFunction(this, "AuthNewPasswordFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/auth/new-password.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    for (const fn of [loginFn, refreshFn, meFn, newPasswordFn]) {
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ["cognito-idp:InitiateAuth", "cognito-idp:RespondToAuthChallenge", "cognito-idp:GetUser"],
+          resources: ["*"],
+        }),
+      );
+    }
+
+    const auth = api.root.addResource("auth");
+    auth.addResource("login").addMethod("POST", new apigateway.LambdaIntegration(loginFn));
+    auth.addResource("refresh").addMethod("POST", new apigateway.LambdaIntegration(refreshFn));
+    auth.addResource("new-password").addMethod("POST", new apigateway.LambdaIntegration(newPasswordFn));
+    auth.addResource("me").addMethod("GET", new apigateway.LambdaIntegration(meFn));
+
     new CfnOutput(this, "Stage", { value: props.stage });
     new CfnOutput(this, "Region", { value: Stack.of(this).region });
     new CfnOutput(this, "AppTableName", { value: appTable.tableName });
     new CfnOutput(this, "MediaBucketName", { value: mediaBucket.bucketName });
     new CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
     new CfnOutput(this, "CognitoUserPoolClientId", { value: userPoolClient.userPoolClientId });
+    new CfnOutput(this, "ApiBaseUrl", { value: api.url });
   }
 }

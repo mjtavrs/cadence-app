@@ -1,0 +1,14 @@
+{
+  "name": "@cadence/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.895.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152",
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}
