@@ -121,6 +121,7 @@ export class CadenceStack extends Stack {
       environment: {
         COGNITO_USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
         APP_TABLE_NAME: appTable.tableName,
+        MEDIA_BUCKET_NAME: mediaBucket.bucketName,
       },
     } as const;
 
@@ -154,7 +155,38 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
-    for (const fn of [loginFn, refreshFn, meFn, newPasswordFn, listWorkspacesFn, setActiveWorkspaceFn]) {
+    const presignMediaFn = new NodejsFunction(this, "PresignMediaFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/presign.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const createMediaFn = new NodejsFunction(this, "CreateMediaFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/create.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const listMediaFn = new NodejsFunction(this, "ListMediaFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/list.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const deleteMediaFn = new NodejsFunction(this, "DeleteMediaFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/delete.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    for (const fn of [
+      loginFn,
+      refreshFn,
+      meFn,
+      newPasswordFn,
+      listWorkspacesFn,
+      setActiveWorkspaceFn,
+      presignMediaFn,
+      createMediaFn,
+      listMediaFn,
+      deleteMediaFn,
+    ]) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
@@ -166,6 +198,14 @@ export class CadenceStack extends Stack {
 
     appTable.grantReadWriteData(listWorkspacesFn);
     appTable.grantReadWriteData(setActiveWorkspaceFn);
+    appTable.grantReadWriteData(presignMediaFn);
+    appTable.grantReadWriteData(createMediaFn);
+    appTable.grantReadWriteData(listMediaFn);
+    appTable.grantReadWriteData(deleteMediaFn);
+
+    mediaBucket.grantPut(presignMediaFn);
+    mediaBucket.grantRead(listMediaFn);
+    mediaBucket.grantDelete(deleteMediaFn);
 
     const auth = api.root.addResource("auth");
     auth.addResource("login").addMethod("POST", new apigateway.LambdaIntegration(loginFn));
@@ -176,6 +216,12 @@ export class CadenceStack extends Stack {
     const workspaces = api.root.addResource("workspaces");
     workspaces.addMethod("GET", new apigateway.LambdaIntegration(listWorkspacesFn));
     workspaces.addResource("active").addMethod("POST", new apigateway.LambdaIntegration(setActiveWorkspaceFn));
+
+    const media = api.root.addResource("media");
+    media.addResource("presign").addMethod("POST", new apigateway.LambdaIntegration(presignMediaFn));
+    media.addMethod("POST", new apigateway.LambdaIntegration(createMediaFn));
+    media.addMethod("GET", new apigateway.LambdaIntegration(listMediaFn));
+    media.addResource("{id}").addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFn));
 
     new CfnOutput(this, "Stage", { value: props.stage });
     new CfnOutput(this, "Region", { value: Stack.of(this).region });
