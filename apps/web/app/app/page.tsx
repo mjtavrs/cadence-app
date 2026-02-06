@@ -19,6 +19,9 @@ export default async function AppHomePage() {
           <Link href="/app/posts">Posts</Link>
         </Button>
         <Button variant="secondary" asChild>
+          <Link href="/app/calendar">Calendário</Link>
+        </Button>
+        <Button variant="secondary" asChild>
           <Link href="/app/media">Mídia</Link>
         </Button>
         <Button variant="secondary" asChild>
