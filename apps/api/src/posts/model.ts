@@ -15,6 +15,10 @@ export type PostItem = {
   postId: string;
   workspaceId: string;
 
+  title: string;
+  shortCode: string;
+  tags: string[];
+
   status: PostStatus;
   caption: string;
   mediaIds: string[];
@@ -27,11 +31,14 @@ export type PostItem = {
 
   scheduledAtUtc?: string;
   weekBucket?: string;
+  monthBucket?: string;
 
   // Indexes
   GSI2PK?: string;
   GSI2SK?: string;
   GSI3PK?: string;
   GSI3SK?: string;
+  GSI4PK?: string;
+  GSI4SK?: string;
 };
 

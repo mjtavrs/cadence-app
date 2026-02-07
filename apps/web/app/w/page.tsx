@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 
 type WorkspaceRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";
 
@@ -95,48 +96,50 @@ export default function WorkspaceSelectorPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
-      <Card className="w-full max-w-lg p-6">
-        <div className="mb-6 space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Selecione um workspace</h1>
-          <p className="text-muted-foreground text-sm">
-            Escolha a empresa em que você vai trabalhar agora.
-          </p>
-        </div>
+    <div className="min-h-screen bg-background px-4 py-10">
+      <div className="mx-auto w-full max-w-lg">
+        <Page>
+          <Card className="p-6">
+            <PageHeader className="mb-6">
+              <PageHeaderText>
+                <PageTitle>Selecione um workspace</PageTitle>
+                <PageDescription>Escolha a empresa em que você vai trabalhar agora.</PageDescription>
+              </PageHeaderText>
+            </PageHeader>
 
-        {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-        ) : error ? (
-          <p className="text-destructive text-sm">{error}</p>
-        ) : data?.workspaces?.length ? (
-          <div className="space-y-3">
-            {data.workspaces.map((w) => (
-              <Button
-                key={w.id}
-                variant="secondary"
-                className="w-full justify-between"
-                disabled={!!selecting}
-                onClick={() => select(w.id)}
-              >
-                <span className="truncate">{w.name}</span>
-                <span className="text-muted-foreground text-xs">
-                  {selecting === w.id ? "Selecionando..." : w.role}
-                </span>
-              </Button>
-            ))}
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            Você ainda não possui acesso a nenhum workspace.
-          </p>
-        )}
+            {loading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : error ? (
+              <p className="text-destructive text-sm">{error}</p>
+            ) : data?.workspaces?.length ? (
+              <PageActions className="flex flex-col items-stretch gap-3">
+                {data.workspaces.map((w) => (
+                  <Button
+                    key={w.id}
+                    variant="secondary"
+                    className="w-full justify-between"
+                    disabled={!!selecting}
+                    onClick={() => select(w.id)}
+                  >
+                    <span className="truncate">{w.name}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {selecting === w.id ? "Selecionando..." : w.role}
+                    </span>
+                  </Button>
+                ))}
+              </PageActions>
+            ) : (
+              <p className="text-muted-foreground text-sm">Você ainda não possui acesso a nenhum workspace.</p>
+            )}
 
-        {error && !loading && <p className="text-destructive mt-4 text-sm">{error}</p>}
-      </Card>
+            {error && !loading && <p className="text-destructive mt-4 text-sm">{error}</p>}
+          </Card>
+        </Page>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { PostsClient, type Post } from "./PostsClient";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 
 async function loadPostsOnServer() {
   const store = await cookies();
@@ -19,6 +22,22 @@ async function loadPostsOnServer() {
 
 export default async function PostsPage() {
   const initialItems = await loadPostsOnServer();
-  return <PostsClient initialItems={initialItems} />;
+  return (
+    <Page>
+      <PageHeader>
+        <PageHeaderText>
+          <PageTitle>Posts</PageTitle>
+          <PageDescription>Workflow editorial: DRAFT → IN_REVIEW → APPROVED → SCHEDULED.</PageDescription>
+        </PageHeaderText>
+        <PageActions>
+          <Button asChild>
+            <Link href="/app/posts/new">Novo post</Link>
+          </Button>
+        </PageActions>
+      </PageHeader>
+
+      <PostsClient initialItems={initialItems} />
+    </Page>
+  );
 }
 

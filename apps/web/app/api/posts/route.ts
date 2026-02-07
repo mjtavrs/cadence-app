@@ -18,8 +18,10 @@ export async function GET(req: Request) {
   const reqUrl = new URL(req.url);
   const week = reqUrl.searchParams.get("week");
   const status = reqUrl.searchParams.get("status");
+  const month = reqUrl.searchParams.get("month");
   if (week) url.searchParams.set("week", week);
   if (status) url.searchParams.set("status", status);
+  if (month) url.searchParams.set("month", month);
 
   const res = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } });
   const payload = await res.json().catch(() => null);
@@ -27,8 +29,10 @@ export async function GET(req: Request) {
 }
 
 type CreateBody = {
+  title?: string;
   caption?: string;
   mediaIds?: string[];
+  tags?: string[];
 };
 
 export async function POST(req: Request) {
@@ -39,7 +43,7 @@ export async function POST(req: Request) {
   if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
 
   const body = (await req.json().catch(() => null)) as CreateBody | null;
-  if (!body?.caption || !body.mediaIds) {
+  if (!body?.title || !body.caption || !body.mediaIds) {
     return NextResponse.json({ message: "Parâmetros inválidos." }, { status: 400 });
   }
 
@@ -48,8 +52,10 @@ export async function POST(req: Request) {
     headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
     body: JSON.stringify({
       workspaceId,
+      title: body.title,
       caption: body.caption,
       mediaIds: body.mediaIds,
+      tags: body.tags ?? [],
     }),
   });
 

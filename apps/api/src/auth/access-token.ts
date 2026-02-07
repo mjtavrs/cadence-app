@@ -20,8 +20,11 @@ export async function getUserFromAccessToken(accessToken: string): Promise<Authe
   const res = await cognito.send(new GetUserCommand({ AccessToken: accessToken }));
   const attributes = Object.fromEntries((res.UserAttributes ?? []).map((a) => [a.Name, a.Value]));
 
+  const username = res.Username ?? (typeof attributes.sub === "string" ? attributes.sub : undefined);
+  if (!username) throw new Error("Cognito user is missing username/sub.");
+
   return {
-    username: res.Username,
+    username,
     sub: attributes.sub,
     email: attributes.email,
   };

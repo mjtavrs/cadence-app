@@ -22,8 +22,10 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
 }
 
 type UpdateBody = {
+  title?: string;
   caption?: string;
   mediaIds?: string[];
+  tags?: string[];
 };
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -45,8 +47,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
     body: JSON.stringify({
       workspaceId,
+      title: body.title,
       caption: body.caption,
       mediaIds: body.mediaIds,
+      tags: body.tags ?? [],
     }),
   });
 

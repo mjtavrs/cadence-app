@@ -4,13 +4,16 @@ import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token"
 import { canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
+import { normalizeTags, normalizeTitle, validateTags, validateTitle } from "../../posts/metadata";
 import { isValidSingleMedia, normalizeCaption } from "../../posts/schedule";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
 type Body = {
   workspaceId?: string;
+  title?: string;
   caption?: string;
   mediaIds?: string[];
+  tags?: string[] | string;
 };
 
 type Post = {
@@ -34,12 +37,23 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   }
 
   const workspaceId = body.workspaceId?.trim();
+  const title = body.title != null ? normalizeTitle(body.title) : null;
   const caption = normalizeCaption(body.caption ?? "");
   const mediaIds = body.mediaIds ?? [];
+  const tags = body.tags != null ? normalizeTags(body.tags) : null;
 
   if (!workspaceId) return badRequest("workspaceId é obrigatório.");
   if (!caption) return badRequest("Legenda não pode estar vazia.");
   if (!isValidSingleMedia(mediaIds)) return badRequest("No MVP, o post deve conter exatamente 1 mídia.");
+  if (title != null) {
+    if (!title) return badRequest("Título não pode estar vazio.");
+    const titleErr = validateTitle(title);
+    if (titleErr) return badRequest(titleErr);
+  }
+  if (tags != null) {
+    const tagsErr = validateTags(tags);
+    if (tagsErr) return badRequest(tagsErr);
+  }
 
   try {
     const authed = await getUserFromAccessToken(token);
@@ -75,12 +89,34 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       ":now": now,
     };
 
+    if (title != null) {
+      setParts.push("#title = :title");
+      names["#title"] = "title";
+      values[":title"] = title;
+    }
+
+    if (tags != null) {
+      setParts.push("#tags = :tags");
+      names["#tags"] = "tags";
+      values[":tags"] = tags;
+    }
+
     if (shouldReReview) {
       setParts.push("#status = :status");
       names["#status"] = "status";
       values[":status"] = "IN_REVIEW";
 
-      removeParts.push("scheduledAtUtc", "weekBucket", "GSI2PK", "GSI2SK", "GSI3PK", "GSI3SK");
+      removeParts.push(
+        "scheduledAtUtc",
+        "weekBucket",
+        "monthBucket",
+        "GSI2PK",
+        "GSI2SK",
+        "GSI3PK",
+        "GSI3SK",
+        "GSI4PK",
+        "GSI4SK",
+      );
     }
 
     const expr = `SET ${setParts.join(", ")}${removeParts.length ? ` REMOVE ${removeParts.join(", ")}` : ""}`;

@@ -3,22 +3,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-
-type PostStatus =
-  | "DRAFT"
-  | "IN_REVIEW"
-  | "APPROVED"
-  | "SCHEDULED"
-  | "PUBLISHED"
-  | "FAILED";
+import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
+import { getNextQuarterSlotInTimeZone } from "@/lib/datetime";
+import { PostCard, type PostListItem, type PostStatus } from "@/components/posts/post-card";
+import { PostsFiltersBar } from "@/components/posts/posts-filters-bar";
 
 export type Post = {
   postId: string;
   status: PostStatus;
+  title?: string;
+  shortCode?: string;
+  tags?: string[];
   caption: string;
   mediaIds: string[];
   scheduledAtUtc?: string;
@@ -33,26 +33,44 @@ function getErrorMessage(value: unknown) {
 }
 
 export function PostsClient(props: { initialItems: Post[] }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
+  const [schedulePostId, setSchedulePostId] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleKey, setScheduleKey] = useState(0);
+  const [scheduleDefaultDate, setScheduleDefaultDate] = useState<Date>(() => new Date());
+  const [scheduleDefaultTime, setScheduleDefaultTime] = useState<string>(() => "00:00");
+
+  const [statusFilter, setStatusFilter] = useState<"ALL" | PostStatus>("ALL");
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
 
   type ListResponse = { items: Post[] };
 
   async function loadPosts() {
-    const res = await fetch("/api/posts", { cache: "no-store" });
+    const url = new URL("/api/posts", window.location.origin);
+    if (statusFilter !== "ALL") url.searchParams.set("status", statusFilter);
+    const res = await fetch(url, { cache: "no-store" });
     const payload = (await res.json().catch(() => null)) as unknown;
     if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao listar posts.");
     return ((payload as ListResponse | null)?.items ?? []) as Post[];
   }
 
   const postsQuery = useQuery({
-    queryKey: ["posts"],
+    queryKey: ["posts", statusFilter],
     queryFn: loadPosts,
-    initialData: props.initialItems,
+    initialData: statusFilter === "ALL" ? props.initialItems : undefined,
     staleTime: 15_000,
   });
 
-  const items = postsQuery.data ?? [];
+  const items = useMemo(() => {
+    const fetchedItems = postsQuery.data ?? [];
+    if (!tagFilters.length) return fetchedItems;
+    return fetchedItems.filter((p) => {
+      const tags = (p.tags ?? []).map((t) => t.toLowerCase());
+      return tagFilters.some((t) => tags.includes(t.toLowerCase()));
+    });
+  }, [postsQuery.data, tagFilters]);
+
   const isBusy = useMemo(() => postsQuery.isFetching, [postsQuery.isFetching]);
 
   const invalidate = async () => queryClient.invalidateQueries({ queryKey: ["posts"] });
@@ -80,40 +98,66 @@ export function PostsClient(props: { initialItems: Post[] }) {
   });
 
   async function action(postId: string, actionName: "submit" | "approve" | "cancel") {
-    setError(null);
     try {
       await actionMutation.mutateAsync({ postId, action: actionName });
+      const msg =
+        actionName === "submit"
+          ? "Post enviado para review."
+          : actionName === "approve"
+            ? "Post aprovado."
+            : "Agendamento cancelado.";
+      toast.success(msg);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao executar ação.");
+      toast.error(e instanceof Error ? e.message : "Falha ao executar ação.");
     }
   }
 
-  async function schedule(postId: string) {
-    setError(null);
-    const value = prompt("Agendar para (UTC ISO). Ex: 2026-02-06T12:30:00.000Z");
-    if (!value) return;
-    try {
-      await scheduleMutation.mutateAsync({ postId, scheduledAtUtc: value });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao agendar post.");
-    }
+  function openSchedule(postId: string) {
+    const next = getNextQuarterSlotInTimeZone(new Date(), "America/Recife");
+    setScheduleDefaultDate(next.dateForCalendar);
+    setScheduleDefaultTime(next.time);
+    setScheduleKey((k) => k + 1);
+    setSchedulePostId(postId);
+    setScheduleOpen(true);
+  }
+
+  async function confirmSchedule(postId: string, scheduledAtUtc: string) {
+    await scheduleMutation.mutateAsync({ postId, scheduledAtUtc });
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Posts</h1>
-          <p className="text-muted-foreground text-sm">
-            Workflow editorial: DRAFT → IN_REVIEW → APPROVED → SCHEDULED.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/app/posts/new">Novo post</Link>
-        </Button>
-      </div>
+    <div className="space-y-4">
+      <SchedulePostDialog
+        key={scheduleKey}
+        open={scheduleOpen}
+        onOpenChange={(open) => {
+          setScheduleOpen(open);
+          if (!open) setSchedulePostId(null);
+        }}
+        isSubmitting={scheduleMutation.isPending}
+        onConfirm={confirmSchedule}
+        postId={schedulePostId}
+        defaultDate={scheduleDefaultDate}
+        defaultTimeHHmm={scheduleDefaultTime}
+      />
 
-      {error && <p className="text-destructive text-sm">{error}</p>}
+      <PostsFiltersBar
+        status={statusFilter}
+        onStatusChange={setStatusFilter}
+        tags={tagFilters}
+        onTagsChange={setTagFilters}
+        onResolveCode={async (code) => {
+          const res = await fetch(`/api/posts/resolve?code=${encodeURIComponent(code)}`);
+          const payload = (await res.json().catch(() => null)) as unknown;
+          const value = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+          if (!res.ok) {
+            throw new Error(typeof value?.message === "string" ? value.message : "Código não encontrado.");
+          }
+          const postId = typeof value?.postId === "string" ? value.postId : undefined;
+          if (!postId) throw new Error("Código não encontrado.");
+          router.push(`/app/posts/${encodeURIComponent(postId)}`);
+        }}
+      />
 
       {postsQuery.isLoading ? (
         <p className="text-muted-foreground text-sm">Carregando...</p>
@@ -132,53 +176,15 @@ export function PostsClient(props: { initialItems: Post[] }) {
       ) : (
         <div className="grid gap-4">
           {items.map((p) => (
-            <Card key={p.postId} className="p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{p.status}</span>
-                    {p.scheduledAtUtc && (
-                      <span className="text-muted-foreground text-xs">{p.scheduledAtUtc}</span>
-                    )}
-                  </div>
-                  <p className="line-clamp-2 text-sm text-zinc-900 dark:text-zinc-50">{p.caption}</p>
-                  <div className="text-muted-foreground text-xs">
-                    {p.mediaIds?.length ? `mídia: ${p.mediaIds[0]}` : "sem mídia"}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" asChild>
-                    <Link href={`/app/posts/${encodeURIComponent(p.postId)}`}>Editar</Link>
-                  </Button>
-                  {p.status === "DRAFT" && (
-                    <Button size="sm" disabled={isBusy} onClick={() => action(p.postId, "submit")}>
-                      Enviar para review
-                    </Button>
-                  )}
-                  {p.status === "IN_REVIEW" && (
-                    <Button size="sm" disabled={isBusy} onClick={() => action(p.postId, "approve")}>
-                      Aprovar
-                    </Button>
-                  )}
-                  {p.status === "APPROVED" && (
-                    <Button size="sm" disabled={isBusy} onClick={() => schedule(p.postId)}>
-                      Agendar
-                    </Button>
-                  )}
-                  {p.status === "SCHEDULED" && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={isBusy}
-                      onClick={() => action(p.postId, "cancel")}
-                    >
-                      Cancelar
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
+            <PostCard
+              key={p.postId}
+              item={p as unknown as PostListItem}
+              isBusy={isBusy}
+              onSubmit={() => void action(p.postId, "submit")}
+              onApprove={() => void action(p.postId, "approve")}
+              onSchedule={() => openSchedule(p.postId)}
+              onCancel={() => void action(p.postId, "cancel")}
+            />
           ))}
         </div>
       )}

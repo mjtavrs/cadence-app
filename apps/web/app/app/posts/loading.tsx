@@ -1,16 +1,23 @@
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 
 export default function Loading() {
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-32" />
-          <Skeleton className="h-4 w-80" />
-        </div>
-        <Skeleton className="h-10 w-28" />
-      </div>
+    <Page>
+      <PageHeader>
+        <PageHeaderText>
+          <PageTitle>
+            <Skeleton className="h-7 w-32" />
+          </PageTitle>
+          <PageDescription>
+            <Skeleton className="h-4 w-80" />
+          </PageDescription>
+        </PageHeaderText>
+        <PageActions>
+          <Skeleton className="h-10 w-28" />
+        </PageActions>
+      </PageHeader>
 
       <div className="grid gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
@@ -27,7 +34,7 @@ export default function Loading() {
           </Card>
         ))}
       </div>
-    </div>
+    </Page>
   );
 }
 

@@ -4,7 +4,7 @@ import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token"
 import { canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
-import { computeWeekBucketUtc, isAlignedToMinutes, parseUtcIso } from "../../posts/schedule";
+import { computeMonthBucketUtc, computeWeekBucketUtc, isAlignedToMinutes, parseUtcIso } from "../../posts/schedule";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
 type Body = {
@@ -35,6 +35,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   if (scheduledAtUtc <= now) return badRequest("Agendamento deve ser no futuro.");
 
   const weekBucket = computeWeekBucketUtc(scheduledAtUtc);
+  const monthBucket = computeMonthBucketUtc(scheduledAtUtc);
 
   try {
     const authed = await getUserFromAccessToken(token);
@@ -53,15 +54,18 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         Key: { PK: `WORKSPACE#${workspaceId}`, SK: `POST#${postId}` },
         ConditionExpression: "#status = :approved",
         UpdateExpression:
-          "SET #status = :scheduled, #scheduledAtUtc = :scheduledAtUtc, #weekBucket = :weekBucket, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk, #updatedAt = :now",
+          "SET #status = :scheduled, #scheduledAtUtc = :scheduledAtUtc, #weekBucket = :weekBucket, #monthBucket = :monthBucket, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk, #gsi3pk = :gsi3pk, #gsi3sk = :gsi3sk, #gsi4pk = :gsi4pk, #gsi4sk = :gsi4sk, #updatedAt = :now",
         ExpressionAttributeNames: {
           "#status": "status",
           "#scheduledAtUtc": "scheduledAtUtc",
           "#weekBucket": "weekBucket",
+          "#monthBucket": "monthBucket",
           "#gsi2pk": "GSI2PK",
           "#gsi2sk": "GSI2SK",
           "#gsi3pk": "GSI3PK",
           "#gsi3sk": "GSI3SK",
+          "#gsi4pk": "GSI4PK",
+          "#gsi4sk": "GSI4SK",
           "#updatedAt": "updatedAt",
         },
         ExpressionAttributeValues: {
@@ -69,10 +73,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           ":scheduled": "SCHEDULED",
           ":scheduledAtUtc": scheduledAtUtc,
           ":weekBucket": weekBucket,
+          ":monthBucket": monthBucket,
           ":gsi2pk": `WORKSPACE#${workspaceId}#WEEK#${weekBucket}`,
           ":gsi2sk": `${scheduledAtUtc}#POST#${postId}`,
           ":gsi3pk": "DISPATCH",
           ":gsi3sk": `${scheduledAtUtc}#WORKSPACE#${workspaceId}#POST#${postId}`,
+          ":gsi4pk": `WORKSPACE#${workspaceId}#MONTH#${monthBucket}`,
+          ":gsi4sk": `${scheduledAtUtc}#POST#${postId}`,
           ":now": now,
         },
       }),

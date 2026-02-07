@@ -29,6 +29,22 @@ export function computeWeekBucketUtc(isoUtc: string) {
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
+export function computeMonthBucketUtc(isoUtc: string) {
+  const d = new Date(isoUtc);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+export function computeMonthBucketRecife(isoUtc: string) {
+  // Recife é UTC-3 (sem DST). Para UX do calendário, o "mês" deve seguir o local.
+  const d = new Date(isoUtc);
+  const local = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+  const year = local.getUTCFullYear();
+  const month = local.getUTCMonth() + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
 function getIsoWeekNumberUtc(date: Date) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNum = d.getUTCDay() || 7;

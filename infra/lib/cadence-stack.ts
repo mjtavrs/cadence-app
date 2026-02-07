@@ -56,6 +56,14 @@ export class CadenceStack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI4 — calendar by month bucket (workspace + YYYY-MM)
+    appTable.addGlobalSecondaryIndex({
+      indexName: "GSI4",
+      partitionKey: { name: "GSI4PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI4SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     const mediaBucket = new s3.Bucket(this, "MediaBucket", {
       bucketName: `cadence-${props.stage}-media-${Stack.of(this).account}-${Stack.of(this).region}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -215,6 +223,11 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const resolvePostCodeFn = new NodejsFunction(this, "ResolvePostCodeFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/resolve-code.ts"),
+      ...apiHandlerDefaults,
+    });
+
     for (const fn of [
       loginFn,
       refreshFn,
@@ -234,6 +247,7 @@ export class CadenceStack extends Stack {
       approvePostFn,
       schedulePostFn,
       cancelPostFn,
+      resolvePostCodeFn,
     ]) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
@@ -258,6 +272,7 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(approvePostFn);
     appTable.grantReadWriteData(schedulePostFn);
     appTable.grantReadWriteData(cancelPostFn);
+    appTable.grantReadWriteData(resolvePostCodeFn);
 
     mediaBucket.grantPut(presignMediaFn);
     mediaBucket.grantRead(listMediaFn);
@@ -282,6 +297,7 @@ export class CadenceStack extends Stack {
     const posts = api.root.addResource("posts");
     posts.addMethod("POST", new apigateway.LambdaIntegration(createPostFn));
     posts.addMethod("GET", new apigateway.LambdaIntegration(listPostsFn));
+    posts.addResource("resolve").addMethod("GET", new apigateway.LambdaIntegration(resolvePostCodeFn));
     const postById = posts.addResource("{id}");
     postById.addMethod("GET", new apigateway.LambdaIntegration(getPostFn));
     postById.addMethod("PUT", new apigateway.LambdaIntegration(updatePostFn));
