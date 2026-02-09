@@ -6,7 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { addWeeksUtc, getIsoWeekBucketUtc, getIsoWeekStartUtc, type WeekBucket } from "./calendar-utils";
+import type { WeekBucket } from "./recife-time";
+import { getIsoWeekStartRecife } from "./recife-time";
+import { addWeeksUtc } from "./calendar-utils";
 import { PostPreviewDialog, type CalendarPreviewPost } from "./post-preview-dialog";
 import { getRecifePartsFromIsoUtc, recifeDayKey, recifeDayKeyFromUtcDate } from "./recife-time";
 
@@ -72,16 +74,7 @@ async function loadWeek(week: WeekBucket) {
 }
 
 async function loadWeekRange(week: WeekBucket) {
-  const start = getIsoWeekStartUtc(week);
-  if (!start) return [] as Post[];
-
-  // Buckets em UTC podem "engolir" posts de domingo à noite (Recife) para a semana seguinte.
-  // Para cobrir o range local, buscamos semana anterior + atual + próxima e filtramos por range.
-  const prev = getIsoWeekBucketUtc(addWeeksUtc(start, -1));
-  const next = getIsoWeekBucketUtc(addWeeksUtc(start, 1));
-
-  const results = await Promise.all([loadWeek(prev), loadWeek(week), loadWeek(next)]);
-  return results.flat();
+  return loadWeek(week);
 }
 
 export function WeekCalendarView(props: { week: WeekBucket }) {
@@ -95,16 +88,11 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
   });
 
   const days = useMemo(() => {
-    const startUtcWeek = getIsoWeekStartUtc(props.week);
-    if (!startUtcWeek) return [];
+    const startRecife = getIsoWeekStartRecife(props.week);
+    if (!startRecife) return [];
 
-    // Colunas por dia precisam seguir o "local week" (Recife).
-    // ISO week start em UTC é 00:00Z; em Recife isso seria 21:00 do dia anterior.
-    // Ajustamos para 00:00 Recife (03:00Z).
-    const start = new Date(startUtcWeek.getTime() + 3 * 60 * 60 * 1000);
-    // UX: semana inicia no domingo (não na segunda).
+    const start = new Date(startRecife);
     start.setUTCDate(start.getUTCDate() - 1);
-    if (!start) return [];
     return Array.from({ length: 7 }).map((_, i) => {
       const d = new Date(start);
       d.setUTCDate(start.getUTCDate() + i);
@@ -113,13 +101,13 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
   }, [props.week]);
 
   const weekRangeUtc = useMemo(() => {
-    const startUtcWeek = getIsoWeekStartUtc(props.week);
-    if (!startUtcWeek) return null;
-    // Range em UTC correspondente ao range local Recife.
-    // ISO week começa na segunda; para semana iniciando domingo, voltamos 1 dia.
-    const startUtcForRecife = new Date(startUtcWeek.getTime() + 3 * 60 * 60 * 1000);
-    startUtcForRecife.setUTCDate(startUtcForRecife.getUTCDate() - 1); // domingo 00:00 Recife em UTC
-    const endUtcForRecife = new Date(startUtcForRecife.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const startRecife = getIsoWeekStartRecife(props.week);
+    if (!startRecife) return null;
+    const startUtcForRecife = new Date(startRecife);
+    startUtcForRecife.setUTCDate(startUtcForRecife.getUTCDate() - 1);
+    const endUtcForRecife = new Date(
+      startUtcForRecife.getTime() + 7 * 24 * 60 * 60 * 1000
+    );
     return { start: startUtcForRecife, end: endUtcForRecife } as const;
   }, [props.week]);
 

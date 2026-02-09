@@ -4,27 +4,7 @@ import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token"
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
-import { computeMonthBucketRecife, computeWeekBucketUtc } from "../../posts/schedule";
-
-function monthToGridWeeks(month: string) {
-  const [y, m] = month.split("-");
-  const year = Number(y);
-  const monthIndex = Number(m) - 1;
-  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || monthIndex < 0 || monthIndex > 11) return null;
-
-  const first = new Date(Date.UTC(year, monthIndex, 1, 12, 0, 0));
-  const dayNum = first.getUTCDay() || 7; // Mon=1..Sun=7
-  const startMonday = new Date(first);
-  startMonday.setUTCDate(first.getUTCDate() - (dayNum - 1));
-
-  const weeks: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const monday = new Date(startMonday);
-    monday.setUTCDate(startMonday.getUTCDate() + i * 7);
-    weeks.push(computeWeekBucketUtc(monday.toISOString()));
-  }
-  return weeks;
-}
+import { computeMonthBucketRecife } from "../../posts/schedule";
 
 function prevMonth(month: string) {
   const [y, m] = month.split("-");
@@ -117,37 +97,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         }
       }
 
-      // Compat: posts agendados antes do GSI4 não têm GSI4PK/GSI4SK.
-      // Fallback via semanas (GSI2) e filtra pelo mês.
-      if (out.length === 0) {
-        const weeks = monthToGridWeeks(m);
-        if (!weeks) return serverError("Falha ao montar semanas do mês.");
-
-        for (const w of weeks) {
-          const wRes = await ddb.send(
-            new QueryCommand({
-              TableName: tableName,
-              IndexName: "GSI2",
-              KeyConditionExpression: "GSI2PK = :pk",
-              ExpressionAttributeValues: {
-                ":pk": `WORKSPACE#${workspaceId}#WEEK#${w}`,
-              },
-              ScanIndexForward: true,
-              Limit: 200,
-            }),
-          );
-
-          for (const it of wRes.Items ?? []) {
-            out.push(it as Record<string, unknown>);
-          }
-        }
-      }
-
       const filtered = out
         .filter((it) => {
           const scheduledAtUtc = typeof it.scheduledAtUtc === "string" ? it.scheduledAtUtc : null;
           if (!scheduledAtUtc) return false;
-          // Importante: o calendário é percebido em Recife, então filtramos por mês local.
           return computeMonthBucketRecife(scheduledAtUtc) === m;
         })
         .sort((a, b) => {

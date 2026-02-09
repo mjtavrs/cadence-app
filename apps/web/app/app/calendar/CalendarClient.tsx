@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-import { addWeeksUtc, getIsoWeekBucketUtc, getIsoWeekStartUtc, type WeekBucket } from "./calendar-utils";
-import { getMonthBucketUtc, monthBucketToLabelPtBr, type MonthBucket } from "./month-utils";
+import type { WeekBucket } from "./recife-time";
+import { getIsoWeekBucketRecife, getIsoWeekStartRecife, getMonthBucketRecife } from "./recife-time";
+import { addWeeksUtc } from "./calendar-utils";
+import { monthBucketToLabelPtBr, type MonthBucket } from "./month-utils";
 import { WeekCalendarView } from "./week-view";
 import { MonthInfiniteCalendarView } from "./month-infinite-view";
 
@@ -15,15 +17,22 @@ const tz = "America/Recife";
 
 export function CalendarClient(props: { initialWeek?: WeekBucket }) {
   const [view, setView] = useState<"week" | "month">("week");
-  const [week, setWeek] = useState<WeekBucket>(props.initialWeek ?? getIsoWeekBucketUtc(new Date()));
+  const [week, setWeek] = useState<WeekBucket>(
+    props.initialWeek ?? getIsoWeekBucketRecife(new Date())
+  );
   const [monthDateUtc] = useState<Date>(() => {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12, 0, 0));
   });
-  const [activeMonth, setActiveMonth] = useState<MonthBucket>(() => getMonthBucketUtc(monthDateUtc));
+  const [activeMonth, setActiveMonth] = useState<MonthBucket>(() =>
+    getMonthBucketRecife(new Date()) as MonthBucket
+  );
 
-  const weekStartUtc = useMemo(() => getIsoWeekStartUtc(week) ?? new Date(), [week]);
-  const monthBucket = useMemo(() => getMonthBucketUtc(monthDateUtc), [monthDateUtc]);
+  const weekStartRecife = useMemo(() => getIsoWeekStartRecife(week) ?? new Date(), [week]);
+  const monthBucket = useMemo(
+    () => (getMonthBucketRecife(new Date()) as MonthBucket),
+    []
+  );
 
   return (
     <Page>
@@ -57,10 +66,22 @@ export function CalendarClient(props: { initialWeek?: WeekBucket }) {
 
           {view === "week" ? (
             <>
-              <Button variant="secondary" onClick={() => setWeek(getIsoWeekBucketUtc(addWeeksUtc(weekStartUtc, -1)))}>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setWeek(
+                    getIsoWeekBucketRecife(addWeeksUtc(weekStartRecife, -1))
+                  )
+                }
+              >
                 ←
               </Button>
-              <Button variant="secondary" onClick={() => setWeek(getIsoWeekBucketUtc(addWeeksUtc(weekStartUtc, 1)))}>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setWeek(getIsoWeekBucketRecife(addWeeksUtc(weekStartRecife, 1)))
+                }
+              >
                 →
               </Button>
             </>

@@ -4,7 +4,12 @@ import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token"
 import { canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
-import { computeMonthBucketUtc, computeWeekBucketUtc, isAlignedToMinutes, parseUtcIso } from "../../posts/schedule";
+import {
+  computeMonthBucketRecife,
+  computeWeekBucketRecife,
+  isAlignedToMinutes,
+  parseUtcIso,
+} from "../../posts/schedule";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
 type Body = {
@@ -34,8 +39,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const now = new Date().toISOString();
   if (scheduledAtUtc <= now) return badRequest("Agendamento deve ser no futuro.");
 
-  const weekBucket = computeWeekBucketUtc(scheduledAtUtc);
-  const monthBucket = computeMonthBucketUtc(scheduledAtUtc);
+  const weekBucket = computeWeekBucketRecife(scheduledAtUtc);
+  const monthBucket = computeMonthBucketRecife(scheduledAtUtc);
 
   try {
     const authed = await getUserFromAccessToken(token);

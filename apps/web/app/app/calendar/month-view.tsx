@@ -100,7 +100,7 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
     return map;
   }, [query.data]);
 
-  const weekdayLabels = useMemo(() => ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"], []);
+  const weekdayLabels = useMemo(() => ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"], []);
 
   const dayItems = useMemo(() => {
     if (!dayKey) return [];

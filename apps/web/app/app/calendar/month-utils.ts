@@ -17,11 +17,14 @@ export function addMonthsUtc(dateUtc: Date, months: number) {
 
 export function getMonthGridStartUtc(monthDateUtc: Date) {
   // monthDateUtc: qualquer dia dentro do mês, em UTC.
+  // Para alinhar com calendário semanal (domingo primeiro), começamos no domingo anterior ao primeiro dia do mês.
+  // Usamos meio-dia (12:00 UTC) para evitar problemas de borda de timezone.
   const first = new Date(Date.UTC(monthDateUtc.getUTCFullYear(), monthDateUtc.getUTCMonth(), 1, 12, 0, 0));
-  // Start Monday (ISO). getUTCDay: Sun=0..Sat=6 -> ISO Mon=1..Sun=7
-  const dayNum = first.getUTCDay() || 7;
+  // getUTCDay() retorna 0=domingo, 1=segunda, ..., 6=sábado
+  // Para começar no domingo, voltamos dayNum dias do primeiro dia do mês.
+  const dayNum = first.getUTCDay();
   const start = new Date(first);
-  start.setUTCDate(first.getUTCDate() - (dayNum - 1));
+  start.setUTCDate(first.getUTCDate() - dayNum);
   return start;
 }
 
