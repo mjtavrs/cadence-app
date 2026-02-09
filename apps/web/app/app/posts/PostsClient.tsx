@@ -97,6 +97,15 @@ export function PostsClient(props: { initialItems: Post[] }) {
     onSuccess: invalidate,
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar post.");
+    },
+    onSuccess: invalidate,
+  });
+
   async function action(postId: string, actionName: "submit" | "approve" | "cancel") {
     try {
       await actionMutation.mutateAsync({ postId, action: actionName });
@@ -123,6 +132,15 @@ export function PostsClient(props: { initialItems: Post[] }) {
 
   async function confirmSchedule(postId: string, scheduledAtUtc: string) {
     await scheduleMutation.mutateAsync({ postId, scheduledAtUtc });
+  }
+
+  async function deletePost(postId: string) {
+    try {
+      await deleteMutation.mutateAsync(postId);
+      toast.success("Post deletado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao deletar post.");
+    }
   }
 
   return (
@@ -179,11 +197,12 @@ export function PostsClient(props: { initialItems: Post[] }) {
             <PostCard
               key={p.postId}
               item={p as unknown as PostListItem}
-              isBusy={isBusy}
+              isBusy={isBusy || deleteMutation.isPending}
               onSubmit={() => void action(p.postId, "submit")}
               onApprove={() => void action(p.postId, "approve")}
               onSchedule={() => openSchedule(p.postId)}
               onCancel={() => void action(p.postId, "cancel")}
+              onDelete={() => void deletePost(p.postId)}
             />
           ))}
         </div>

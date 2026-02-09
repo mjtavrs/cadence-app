@@ -6,7 +6,14 @@ import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { newPostId, newPostShortCode } from "../../posts/ids";
 import { normalizeTags, normalizeTitle, validateTags, validateTitle } from "../../posts/metadata";
-import { isValidSingleMedia, normalizeCaption } from "../../posts/schedule";
+import {
+  computeMonthBucketRecife,
+  computeWeekBucketRecife,
+  isValidSingleMedia,
+  isAlignedToMinutes,
+  normalizeCaption,
+  parseUtcIso,
+} from "../../posts/schedule";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
 type Body = {
@@ -15,6 +22,7 @@ type Body = {
   caption?: string;
   mediaIds?: string[];
   tags?: string[] | string;
+  scheduledAtUtc?: string;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -33,6 +41,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const caption = normalizeCaption(body.caption ?? "");
   const mediaIds = body.mediaIds ?? [];
   const tags = normalizeTags(body.tags);
+  const rawScheduled = body.scheduledAtUtc?.trim();
 
   if (!workspaceId) return badRequest("workspaceId é obrigatório.");
   if (!title) return badRequest("Título é obrigatório.");
@@ -43,6 +52,19 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   if (titleErr) return badRequest(titleErr);
   const tagsErr = validateTags(tags);
   if (tagsErr) return badRequest(tagsErr);
+
+  let scheduledAtUtc: string | null = null;
+  let weekBucket: string | null = null;
+  let monthBucket: string | null = null;
+  if (rawScheduled) {
+    scheduledAtUtc = parseUtcIso(rawScheduled);
+    if (!scheduledAtUtc) return badRequest("scheduledAtUtc inválido.");
+    if (!isAlignedToMinutes(scheduledAtUtc, 15)) return badRequest("Agendamento deve ser de 15 em 15 minutos.");
+    const now = new Date().toISOString();
+    if (scheduledAtUtc <= now) return badRequest("Agendamento deve ser no futuro.");
+    weekBucket = computeWeekBucketRecife(scheduledAtUtc);
+    monthBucket = computeMonthBucketRecife(scheduledAtUtc);
+  }
 
   try {
     const authed = await getUserFromAccessToken(token);
@@ -84,6 +106,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                     createdByUserId: userId,
                     createdByRole: membership.role,
                     updatedAt: now,
+                    ...(scheduledAtUtc && weekBucket && monthBucket
+                      ? {
+                          scheduledAtUtc,
+                          weekBucket,
+                          monthBucket,
+                          GSI2PK: `WORKSPACE#${workspaceId}#WEEK#${weekBucket}`,
+                          GSI2SK: `${scheduledAtUtc}#POST#${postId}`,
+                          GSI4PK: `WORKSPACE#${workspaceId}#MONTH#${monthBucket}`,
+                          GSI4SK: `${scheduledAtUtc}#POST#${postId}`,
+                        }
+                      : {}),
                   },
                   ConditionExpression: "attribute_not_exists(PK)",
                 },

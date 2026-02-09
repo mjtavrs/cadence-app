@@ -1,12 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { CopyIcon } from "lucide-react";
+import { CopyIcon, TrashIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PostStatusBadge } from "@/components/posts/post-status-badge";
 import { formatRecifeDateTimeShort } from "@/lib/datetime";
 
@@ -30,8 +41,10 @@ export function PostCard(props: {
   onApprove(): void;
   onSchedule(): void;
   onCancel(): void;
+  onDelete(): void;
 }) {
   const p = props.item;
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   async function copyCode() {
     if (!p.shortCode) return;
@@ -116,8 +129,39 @@ export function PostCard(props: {
               Cancelar
             </Button>
           )}
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={props.isBusy}
+            onClick={() => setDeleteOpen(true)}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </Button>
         </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deletar post</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja deletar este post? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setDeleteOpen(false);
+                props.onDelete();
+              }}
+            >
+              Deletar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

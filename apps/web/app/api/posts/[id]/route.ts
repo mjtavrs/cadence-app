@@ -58,3 +58,23 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   return NextResponse.json(payload ?? { message: "Falha ao atualizar post." }, { status: res.status });
 }
 
+export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> }) {
+  const store = await cookies();
+  const accessToken = store.get(ACCESS_COOKIE)?.value;
+  const workspaceId = store.get(WORKSPACE_COOKIE)?.value;
+  if (!accessToken) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
+
+  const { id } = await ctx.params;
+  const url = new URL(`posts/${encodeURIComponent(id)}`, env.apiBaseUrl);
+  url.searchParams.set("workspaceId", workspaceId);
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+
+  const result = await res.json().catch(() => null);
+  return NextResponse.json(result ?? { message: "Falha ao deletar post." }, { status: res.status });
+}
+

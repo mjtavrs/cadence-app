@@ -33,6 +33,7 @@ type CreateBody = {
   caption?: string;
   mediaIds?: string[];
   tags?: string[];
+  scheduledAtUtc?: string;
 };
 
 export async function POST(req: Request) {
@@ -47,19 +48,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Parâmetros inválidos." }, { status: 400 });
   }
 
+  const payload: Record<string, unknown> = {
+    workspaceId,
+    title: body.title,
+    caption: body.caption,
+    mediaIds: body.mediaIds,
+    tags: body.tags ?? [],
+  };
+  if (typeof body.scheduledAtUtc === "string" && body.scheduledAtUtc.trim()) {
+    payload.scheduledAtUtc = body.scheduledAtUtc.trim();
+  }
+
   const res = await fetch(new URL("posts", env.apiBaseUrl), {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({
-      workspaceId,
-      title: body.title,
-      caption: body.caption,
-      mediaIds: body.mediaIds,
-      tags: body.tags ?? [],
-    }),
+    body: JSON.stringify(payload),
   });
 
-  const payload = await res.json().catch(() => null);
-  return NextResponse.json(payload ?? { message: "Falha ao criar post." }, { status: res.status });
+  const result = await res.json().catch(() => null);
+  return NextResponse.json(result ?? { message: "Falha ao criar post." }, { status: res.status });
 }
 

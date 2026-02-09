@@ -61,7 +61,8 @@ function formatDayHeader(dateUtc: Date) {
 
 function statusBarClass(status: PostStatus) {
   if (status === "PUBLISHED") return "bg-emerald-500";
-  if (status === "SCHEDULED") return "bg-foreground";
+  if (status === "APPROVED" || status === "SCHEDULED") return "bg-primary";
+  if (status === "DRAFT" || status === "IN_REVIEW") return "bg-amber-500";
   if (status === "FAILED") return "bg-destructive";
   return "bg-muted-foreground/50";
 }

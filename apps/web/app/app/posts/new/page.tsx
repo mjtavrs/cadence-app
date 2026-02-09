@@ -12,8 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { TagsInput } from "@/components/posts/tags-input";
+import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { getNextQuarterSlotInTimeZone } from "@/lib/datetime";
+import { formatRecifeDateTimeShort } from "@/lib/datetime";
 
 type MediaItem = {
   id: string;
@@ -41,6 +44,10 @@ export default function NewPostPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [scheduledAtUtc, setScheduledAtUtc] = useState<string | null>(null);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+
+  const scheduleDefault = useMemo(() => getNextQuarterSlotInTimeZone(), []);
 
   const normalizedTitle = useMemo(() => title.replace(/\s+/g, " ").trim(), [title]);
   const normalizedCaption = useMemo(() => caption.replace(/\s+/g, " ").trim(), [caption]);
@@ -75,10 +82,17 @@ export default function NewPostPage() {
     }
 
     setSaving(true);
+    const body: Record<string, unknown> = {
+      title: normalizedTitle,
+      caption: normalizedCaption,
+      tags,
+      mediaIds: [selectedMediaId],
+    };
+    if (scheduledAtUtc) body.scheduledAtUtc = scheduledAtUtc;
     const res = await fetch("/api/posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: normalizedTitle, caption: normalizedCaption, tags, mediaIds: [selectedMediaId] }),
+      body: JSON.stringify(body),
     });
     const payload = (await res.json().catch(() => null)) as unknown;
     if (!res.ok) {
@@ -178,12 +192,49 @@ export default function NewPostPage() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Data e hora de publicação</div>
+              {scheduledAtUtc ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {formatRecifeDateTimeShort(scheduledAtUtc)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setScheduleModalOpen(true)}
+                  >
+                    Alterar
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setScheduleModalOpen(true)}
+                >
+                  Definir data e hora
+                </Button>
+              )}
+            </div>
+
             <Button className="w-full" disabled={saving} onClick={() => void save()}>
               {saving ? "Salvando..." : "Criar post"}
             </Button>
           </div>
         </Card>
       </div>
+
+      <SchedulePostDialog
+        open={scheduleModalOpen}
+        onOpenChange={setScheduleModalOpen}
+        postId={null}
+        defaultDate={scheduleDefault.dateForCalendar}
+        defaultTimeHHmm={scheduleDefault.time}
+        onSelectScheduledAtUtc={setScheduledAtUtc}
+      />
     </Page>
   );
 }

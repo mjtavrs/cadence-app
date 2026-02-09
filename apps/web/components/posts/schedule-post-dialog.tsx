@@ -22,11 +22,13 @@ const STEP_MINUTES = 15;
 export function SchedulePostDialog(props: {
   open: boolean;
   onOpenChange(open: boolean): void;
-  isSubmitting: boolean;
-  onConfirm(postId: string, scheduledAtUtc: string): Promise<void>;
+  isSubmitting?: boolean;
+  onConfirm?(postId: string, scheduledAtUtc: string): Promise<void>;
   postId: string | null;
   defaultDate: Date;
   defaultTimeHHmm: string;
+  /** Quando postId é null, ao confirmar chama com o ISO selecionado (fluxo de criação). */
+  onSelectScheduledAtUtc?(scheduledAtUtc: string): void;
 }) {
   const timeOptions = useMemo(() => makeTimeOptions(STEP_MINUTES), []);
   const today = useMemo(() => getTodayForCalendar(TZ), []);
@@ -34,8 +36,9 @@ export function SchedulePostDialog(props: {
   const [date, setDate] = useState<Date | undefined>(() => props.defaultDate);
   const [timeHHmm, setTimeHHmm] = useState<string | undefined>(() => props.defaultTimeHHmm);
 
+  const isSelectionOnly = props.postId == null;
+
   async function confirm() {
-    if (!props.postId) return;
     if (!date) {
       toast.error("Selecione um dia.");
       return;
@@ -60,6 +63,13 @@ export function SchedulePostDialog(props: {
       return;
     }
 
+    if (isSelectionOnly && props.onSelectScheduledAtUtc) {
+      props.onSelectScheduledAtUtc(scheduledAtUtc);
+      props.onOpenChange(false);
+      return;
+    }
+
+    if (!props.postId || !props.onConfirm) return;
     try {
       await props.onConfirm(props.postId, scheduledAtUtc);
       toast.success("Post agendado.");
@@ -73,7 +83,7 @@ export function SchedulePostDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Agendar post</DialogTitle>
+          <DialogTitle>{isSelectionOnly ? "Definir data e hora" : "Agendar post"}</DialogTitle>
           <DialogDescription>
             Escolha a data e o horário (America/Recife). O agendamento precisa ser no futuro.
           </DialogDescription>
@@ -124,8 +134,11 @@ export function SchedulePostDialog(props: {
           <Button variant="secondary" onClick={() => props.onOpenChange(false)} disabled={props.isSubmitting}>
             Cancelar
           </Button>
-          <Button onClick={confirm} disabled={props.isSubmitting || !props.postId}>
-            {props.isSubmitting ? "Agendando..." : "Confirmar"}
+          <Button
+            onClick={() => void confirm()}
+            disabled={props.isSubmitting || (!isSelectionOnly && !props.postId)}
+          >
+            {props.isSubmitting ? "Agendando..." : isSelectionOnly ? "Definir" : "Confirmar"}
           </Button>
         </DialogFooter>
       </DialogContent>

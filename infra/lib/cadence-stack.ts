@@ -223,6 +223,11 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const deletePostFn = new NodejsFunction(this, "DeletePostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/delete.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const resolvePostCodeFn = new NodejsFunction(this, "ResolvePostCodeFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/resolve-code.ts"),
       ...apiHandlerDefaults,
@@ -247,6 +252,7 @@ export class CadenceStack extends Stack {
       approvePostFn,
       schedulePostFn,
       cancelPostFn,
+      deletePostFn,
       resolvePostCodeFn,
     ]) {
       fn.addToRolePolicy(
@@ -272,6 +278,7 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(approvePostFn);
     appTable.grantReadWriteData(schedulePostFn);
     appTable.grantReadWriteData(cancelPostFn);
+    appTable.grantReadWriteData(deletePostFn);
     appTable.grantReadWriteData(resolvePostCodeFn);
 
     mediaBucket.grantPut(presignMediaFn);
@@ -301,6 +308,7 @@ export class CadenceStack extends Stack {
     const postById = posts.addResource("{id}");
     postById.addMethod("GET", new apigateway.LambdaIntegration(getPostFn));
     postById.addMethod("PUT", new apigateway.LambdaIntegration(updatePostFn));
+    postById.addMethod("DELETE", new apigateway.LambdaIntegration(deletePostFn));
     postById.addResource("submit").addMethod("POST", new apigateway.LambdaIntegration(submitPostFn));
     postById.addResource("approve").addMethod("POST", new apigateway.LambdaIntegration(approvePostFn));
     postById.addResource("schedule").addMethod("POST", new apigateway.LambdaIntegration(schedulePostFn));
