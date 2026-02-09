@@ -1,13 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { CalendarPostContextMenu } from "@/components/calendar/calendar-post-context-menu";
 
 import { buildMonthGridUtc, type MonthBucket } from "./month-utils";
 import { PostPreviewDialog, type CalendarPreviewPost } from "./post-preview-dialog";
@@ -71,16 +84,48 @@ async function loadMonth(month: MonthBucket) {
 }
 
 export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUtc: Date }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<CalendarPreviewPost | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-
   const [dayOpen, setDayOpen] = useState(false);
   const [dayKey, setDayKey] = useState<string | null>(null);
+  const [postToDelete, setPostToDelete] = useState<CalendarMonthPost | null>(null);
 
   const query = useQuery({
     queryKey: ["calendar-month", props.monthBucket],
     queryFn: () => loadMonth(props.monthBucket),
     staleTime: 15_000,
+  });
+
+  const invalidateCalendar = () =>
+    queryClient.invalidateQueries({ queryKey: ["calendar-month"] });
+
+  const revertMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(postId)}/revert-to-draft`, { method: "POST" });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao mover para rascunho.");
+    },
+    onSuccess: () => {
+      invalidateCalendar();
+      toast.success("Post movido para rascunho.");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao mover para rascunho."),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir post.");
+    },
+    onSuccess: () => {
+      setPostToDelete(null);
+      invalidateCalendar();
+      toast.success("Post excluído.");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao excluir post."),
   });
 
   const grid = useMemo(() => buildMonthGridUtc(props.monthDateUtc), [props.monthDateUtc]);
@@ -159,21 +204,29 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
 
                 <div className="mt-2 space-y-1">
                   {visible.map((p) => (
-                    <button
+                    <CalendarPostContextMenu
                       key={p.postId}
-                      type="button"
-                      className={cn(
-                        "group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left",
-                        "hover:bg-muted/60",
-                      )}
-                      onClick={() => openPreview(p)}
+                      post={{ postId: p.postId, status: p.status }}
+                      onMoveToDraft={() => revertMutation.mutate(p.postId)}
+                      onEdit={() => router.push(`/app/posts/${p.postId}`)}
+                      onDelete={() => setPostToDelete(p)}
+                      isBusy={revertMutation.isPending || deleteMutation.isPending}
                     >
-                      <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
-                      <span className="min-w-0 truncate text-xs font-medium">
-                        {p.scheduledAtUtc ? `${formatTime(p.scheduledAtUtc)} · ` : ""}
-                        {p.title?.trim() ? p.title : "Sem título"}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left",
+                          "hover:bg-muted/60",
+                        )}
+                        onClick={() => openPreview(p)}
+                      >
+                        <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
+                        <span className="min-w-0 truncate text-xs font-medium">
+                          {p.scheduledAtUtc ? `${formatTime(p.scheduledAtUtc)} · ` : ""}
+                          {p.title?.trim() ? p.title : "Sem título"}
+                        </span>
+                      </button>
+                    </CalendarPostContextMenu>
                   ))}
 
                   {overflow > 0 ? (
@@ -207,40 +260,48 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Posts do dia</DialogTitle>
-            <DialogDescription>{dayKey ? `Data: ${dayKey} (${tz})` : ""}</DialogDescription>
+            <DialogDescription>{dayKey ? `Data: ${dayKey} (America/Recife)` : ""}</DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="h-[360px] pr-4">
             <div className="space-y-1">
               {dayItems.map((p) => (
-                <button
+                <CalendarPostContextMenu
                   key={p.postId}
-                  type="button"
-                  className={cn(
-                    "group flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 text-left",
-                    "hover:bg-muted/60",
-                  )}
-                  onClick={() => {
-                    setDayOpen(false);
-                    openPreview(p);
-                  }}
+                  post={{ postId: p.postId, status: p.status }}
+                  onMoveToDraft={() => revertMutation.mutate(p.postId)}
+                  onEdit={() => { setDayOpen(false); router.push(`/app/posts/${p.postId}`); }}
+                  onDelete={() => { setDayOpen(false); setPostToDelete(p); }}
+                  isBusy={revertMutation.isPending || deleteMutation.isPending}
                 >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">
-                        {p.scheduledAtUtc ? `${formatTime(p.scheduledAtUtc)} · ` : ""}
-                        {p.title?.trim() ? p.title : "Sem título"}
+                  <button
+                    type="button"
+                    className={cn(
+                      "group flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 text-left",
+                      "hover:bg-muted/60",
+                    )}
+                    onClick={() => {
+                      setDayOpen(false);
+                      openPreview(p);
+                    }}
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">
+                          {p.scheduledAtUtc ? `${formatTime(p.scheduledAtUtc)} · ` : ""}
+                          {p.title?.trim() ? p.title : "Sem título"}
+                        </div>
+                        <div className="text-muted-foreground line-clamp-1 text-xs">{p.caption}</div>
                       </div>
-                      <div className="text-muted-foreground line-clamp-1 text-xs">{p.caption}</div>
                     </div>
-                  </div>
-                  {p.shortCode ? (
-                    <Badge variant="outline" className="font-mono text-[11px]">
-                      {p.shortCode}
-                    </Badge>
-                  ) : null}
-                </button>
+                    {p.shortCode ? (
+                      <Badge variant="outline" className="font-mono text-[11px]">
+                        {p.shortCode}
+                      </Badge>
+                    ) : null}
+                  </button>
+                </CalendarPostContextMenu>
               ))}
               {!query.isLoading && dayItems.length === 0 ? (
                 <div className="text-muted-foreground text-sm">Sem posts</div>
@@ -255,6 +316,26 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!postToDelete} onOpenChange={(open) => !open && setPostToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O post será removido permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => postToDelete && deleteMutation.mutate(postToDelete.postId)}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

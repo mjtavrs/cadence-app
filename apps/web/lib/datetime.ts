@@ -58,9 +58,15 @@ export function formatYmdPtBr(date: Date, timeZone: string = TZ) {
   }).format(date);
 }
 
-export function makeTimeOptions(stepMinutes: 15) {
+export function makeTimeOptions(
+  stepMinutes: number,
+  minHour: number = 0,
+  maxHour: number = 24
+) {
   const options: string[] = [];
-  for (let h = 0; h < 24; h++) {
+  const minH = Math.max(0, Math.min(24, minHour));
+  const maxH = Math.max(0, Math.min(24, maxHour));
+  for (let h = minH; h < maxH; h++) {
     for (let m = 0; m < 60; m += stepMinutes) {
       options.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
@@ -106,6 +112,12 @@ export function getNextQuarterSlotInTimeZone(now: Date = new Date(), timeZone: s
     ymd.month = advanced.month;
     ymd.day = advanced.day;
   }
+
+  const SCHEDULE_MIN_HOUR = 6;
+  const SCHEDULE_MAX_HOUR = 22;
+  if (hour < SCHEDULE_MIN_HOUR) hour = SCHEDULE_MIN_HOUR;
+  if (hour > SCHEDULE_MAX_HOUR) hour = SCHEDULE_MAX_HOUR;
+  if (hour === SCHEDULE_MAX_HOUR && minute > 0) minute = 0;
 
   const dateForCalendar = new Date(Date.UTC(ymd.year, ymd.month - 1, ymd.day, 12, 0, 0));
   const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;

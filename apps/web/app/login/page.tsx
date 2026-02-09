@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -43,7 +43,7 @@ function getErrorMessage(value: unknown) {
   return null;
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = useMemo(() => searchParams.get("next") || "/app", [searchParams]);
@@ -238,6 +238,22 @@ export default function LoginPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
+          <Card className="w-full max-w-md p-6">
+            <div className="text-muted-foreground text-sm">Carregando...</div>
+          </Card>
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }
 

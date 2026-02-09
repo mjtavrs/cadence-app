@@ -228,6 +228,11 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const revertToDraftPostFn = new NodejsFunction(this, "RevertToDraftPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/revert-to-draft.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const resolvePostCodeFn = new NodejsFunction(this, "ResolvePostCodeFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/resolve-code.ts"),
       ...apiHandlerDefaults,
@@ -253,6 +258,7 @@ export class CadenceStack extends Stack {
       schedulePostFn,
       cancelPostFn,
       deletePostFn,
+      revertToDraftPostFn,
       resolvePostCodeFn,
     ]) {
       fn.addToRolePolicy(
@@ -279,6 +285,7 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(schedulePostFn);
     appTable.grantReadWriteData(cancelPostFn);
     appTable.grantReadWriteData(deletePostFn);
+    appTable.grantReadWriteData(revertToDraftPostFn);
     appTable.grantReadWriteData(resolvePostCodeFn);
 
     mediaBucket.grantPut(presignMediaFn);
@@ -313,6 +320,7 @@ export class CadenceStack extends Stack {
     postById.addResource("approve").addMethod("POST", new apigateway.LambdaIntegration(approvePostFn));
     postById.addResource("schedule").addMethod("POST", new apigateway.LambdaIntegration(schedulePostFn));
     postById.addResource("cancel").addMethod("POST", new apigateway.LambdaIntegration(cancelPostFn));
+    postById.addResource("revert-to-draft").addMethod("POST", new apigateway.LambdaIntegration(revertToDraftPostFn));
 
     new CfnOutput(this, "Stage", { value: props.stage });
     new CfnOutput(this, "Region", { value: Stack.of(this).region });

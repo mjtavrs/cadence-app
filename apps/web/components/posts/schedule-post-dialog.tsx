@@ -30,11 +30,29 @@ export function SchedulePostDialog(props: {
   /** Quando postId é null, ao confirmar chama com o ISO selecionado (fluxo de criação). */
   onSelectScheduledAtUtc?(scheduledAtUtc: string): void;
 }) {
-  const timeOptions = useMemo(() => makeTimeOptions(STEP_MINUTES), []);
+  const SCHEDULE_MIN_HOUR = 6;
+  const SCHEDULE_MAX_HOUR = 22;
+  const timeOptions = useMemo(() => {
+    const opts = makeTimeOptions(STEP_MINUTES, SCHEDULE_MIN_HOUR, SCHEDULE_MAX_HOUR);
+    if (!opts.includes("22:00")) opts.push("22:00");
+    return opts;
+  }, []);
   const today = useMemo(() => getTodayForCalendar(TZ), []);
 
+  const clampTimeToSchedule = (t: string) => {
+    const match = /^(\d{2}):(\d{2})$/.exec(t);
+    if (!match) return t;
+    const h = Number(match[1]);
+    if (h < SCHEDULE_MIN_HOUR) return `${String(SCHEDULE_MIN_HOUR).padStart(2, "0")}:00`;
+    if (h > SCHEDULE_MAX_HOUR) return `${String(SCHEDULE_MAX_HOUR).padStart(2, "0")}:00`;
+    return t;
+  };
+
   const [date, setDate] = useState<Date | undefined>(() => props.defaultDate);
-  const [timeHHmm, setTimeHHmm] = useState<string | undefined>(() => props.defaultTimeHHmm);
+  const [timeHHmm, setTimeHHmm] = useState<string | undefined>(() => {
+    const t = props.defaultTimeHHmm;
+    return t ? clampTimeToSchedule(t) : undefined;
+  });
 
   const isSelectionOnly = props.postId == null;
 
@@ -49,6 +67,12 @@ export function SchedulePostDialog(props: {
     }
     if (!isAlignedToMinutes(timeHHmm, STEP_MINUTES)) {
       toast.error(`O horário deve estar alinhado em ${STEP_MINUTES} minutos.`);
+      return;
+    }
+    const hourMatch = /^(\d{2})/.exec(timeHHmm);
+    const hour = hourMatch ? Number(hourMatch[1]) : -1;
+    if (hour < SCHEDULE_MIN_HOUR || hour >= SCHEDULE_MAX_HOUR) {
+      toast.error(`O horário deve ser entre ${String(SCHEDULE_MIN_HOUR).padStart(2, "0")}:00 e ${String(SCHEDULE_MAX_HOUR).padStart(2, "0")}:00.`);
       return;
     }
 

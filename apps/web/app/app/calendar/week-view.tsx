@@ -1,10 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { CalendarPostContextMenu } from "@/components/calendar/calendar-post-context-menu";
 
 import type { WeekBucket } from "./recife-time";
 import { getIsoWeekStartRecife } from "./recife-time";
@@ -79,13 +92,48 @@ async function loadWeekRange(week: WeekBucket) {
 }
 
 export function WeekCalendarView(props: { week: WeekBucket }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<CalendarPreviewPost | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<Post | null>(null);
 
   const query = useQuery({
     queryKey: ["calendar-week", props.week],
     queryFn: () => loadWeekRange(props.week),
     staleTime: 15_000,
+  });
+
+  const invalidateCalendar = () =>
+    queryClient.invalidateQueries({ queryKey: ["calendar-week"] });
+
+  const revertMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(postId)}/revert-to-draft`, { method: "POST" });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao mover para rascunho.");
+    },
+    onSuccess: () => {
+      invalidateCalendar();
+      toast.success("Post movido para rascunho.");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao mover para rascunho."),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir post.");
+    },
+    onSuccess: () => {
+      setPostToDelete(null);
+      invalidateCalendar();
+      toast.success("Post excluído.");
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : "Falha ao excluir post.");
+    },
   });
 
   const days = useMemo(() => {
@@ -263,23 +311,31 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
                         return list.map((p, stackIndex) => {
                           const top = Math.round(topBase + stackIndex * (EVENT_HEIGHT + EVENT_STACK_GAP));
                           return (
-                            <button
+                            <CalendarPostContextMenu
                               key={`${p.postId}-${minute}-${stackIndex}`}
-                              type="button"
-                              onClick={() => openPreview(p)}
-                              className={cn(
-                                "group absolute left-1 right-1 z-10 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left",
-                                "bg-background/90",
-                                "hover:bg-muted/60",
-                              )}
-                              style={{ top, height: EVENT_HEIGHT }}
-                              title={p.title ?? p.postId}
+                              post={{ postId: p.postId, status: p.status }}
+                              onMoveToDraft={() => revertMutation.mutate(p.postId)}
+                              onEdit={() => router.push(`/app/posts/${p.postId}`)}
+                              onDelete={() => setPostToDelete(p)}
+                              isBusy={revertMutation.isPending || deleteMutation.isPending}
                             >
-                              <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
-                              <span className="min-w-0 truncate text-[11px] font-medium">
-                                {p.title?.trim() ? p.title : "Sem título"}
-                              </span>
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => openPreview(p)}
+                                className={cn(
+                                  "group absolute left-1 right-1 z-10 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left",
+                                  "bg-background/90",
+                                  "hover:bg-muted/60",
+                                )}
+                                style={{ top, height: EVENT_HEIGHT }}
+                                title={p.title ?? p.postId}
+                              >
+                                <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
+                                <span className="min-w-0 truncate text-[11px] font-medium">
+                                  {p.title?.trim() ? p.title : "Sem título"}
+                                </span>
+                              </button>
+                            </CalendarPostContextMenu>
                           );
                         });
                       })}
@@ -293,6 +349,26 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
       </div>
 
       <PostPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} post={selected} />
+
+      <AlertDialog open={!!postToDelete} onOpenChange={(open) => !open && setPostToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O post será removido permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => postToDelete && deleteMutation.mutate(postToDelete.postId)}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
