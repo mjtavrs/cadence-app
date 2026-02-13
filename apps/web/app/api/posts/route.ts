@@ -34,6 +34,9 @@ type CreateBody = {
   mediaIds?: string[];
   tags?: string[];
   scheduledAtUtc?: string;
+  aspectRatio?: string;
+  cropX?: number;
+  cropY?: number;
 };
 
 export async function POST(req: Request) {
@@ -57,6 +60,15 @@ export async function POST(req: Request) {
   };
   if (typeof body.scheduledAtUtc === "string" && body.scheduledAtUtc.trim()) {
     payload.scheduledAtUtc = body.scheduledAtUtc.trim();
+  }
+  if (typeof body.aspectRatio === "string" && body.aspectRatio.trim()) {
+    payload.aspectRatio = body.aspectRatio.trim();
+  }
+  if (typeof body.cropX === "number" && !Number.isNaN(body.cropX)) {
+    payload.cropX = body.cropX;
+  }
+  if (typeof body.cropY === "number" && !Number.isNaN(body.cropY)) {
+    payload.cropY = body.cropY;
   }
 
   const res = await fetch(new URL("posts", env.apiBaseUrl), {

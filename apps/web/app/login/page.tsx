@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTheme } from "next-themes";
+import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,9 +49,12 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = useMemo(() => searchParams.get("next") || "/app", [searchParams]);
+  const { resolvedTheme } = useTheme();
+  const logoSrc = resolvedTheme === "dark" ? "/logo_light.webp" : "/logo_dark.webp";
 
   const [mode, setMode] = useState<Mode>("login");
   const [serverError, setServerError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -75,55 +80,79 @@ function LoginPageContent() {
 
   async function onLoginSubmit(values: LoginFormValues) {
     setServerError(null);
+    setIsLoading(true);
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(values),
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(values),
+      });
 
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as unknown;
-      const message = getErrorMessage(payload) ?? "Não foi possível entrar agora.";
-      if (res.status === 409) {
-        setMode("newPassword");
-        setServerError(null);
-        newPasswordForm.reset();
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as unknown;
+        const message = getErrorMessage(payload) ?? "Não foi possível entrar agora.";
+        if (res.status === 409) {
+          setMode("newPassword");
+          setServerError(null);
+          newPasswordForm.reset();
+          setIsLoading(false);
+          return;
+        }
+        setServerError(message);
+        setIsLoading(false);
         return;
       }
-      setServerError(message);
-      return;
-    }
 
-    router.replace(next);
+      // Manter loading até a navegação completar
+      router.replace(next);
+    } catch (error) {
+      setServerError("Não foi possível entrar agora.");
+      setIsLoading(false);
+    }
   }
 
   async function onNewPasswordSubmit(values: NewPasswordFormValues) {
     setServerError(null);
+    setIsLoading(true);
 
-    const res = await fetch("/api/auth/new-password", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ newPassword: values.newPassword }),
-    });
+    try {
+      const res = await fetch("/api/auth/new-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newPassword: values.newPassword }),
+      });
 
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as unknown;
-      setServerError(getErrorMessage(payload) ?? "Não foi possível definir a nova senha agora.");
-      return;
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as unknown;
+        setServerError(getErrorMessage(payload) ?? "Não foi possível definir a nova senha agora.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Manter loading até a navegação completar
+      router.replace(next);
+    } catch (error) {
+      setServerError("Não foi possível definir a nova senha agora.");
+      setIsLoading(false);
     }
-
-    router.replace(next);
   }
 
-  const isSubmitting =
-    loginForm.formState.isSubmitting || newPasswordForm.formState.isSubmitting;
+  const isSubmitting = isLoading || loginForm.formState.isSubmitting || newPasswordForm.formState.isSubmitting;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
+      <Image
+        src={logoSrc}
+        alt="Cadence"
+        width={200}
+        height={200}
+        className="mb-8 h-auto w-40 shrink-0 object-contain"
+        priority
+      />
       <Card className="w-full max-w-md p-6">
-        <div className="mb-6 space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">
+        <div className="mb-6 space-y-1 text-center">
+          <h1 className="text-3xl font-normal tracking-tight">
             {mode === "login" ? "Entrar" : "Definir nova senha"}
           </h1>
           <p className="text-muted-foreground text-sm">
@@ -245,7 +274,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
+        <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
           <Card className="w-full max-w-md p-6">
             <div className="text-muted-foreground text-sm">Carregando...</div>
           </Card>

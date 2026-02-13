@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 
@@ -31,6 +32,14 @@ async function loadMediaOnServer() {
   if (!res.ok) return [] as MediaItem[];
   const payload = (await res.json().catch(() => null)) as { items?: MediaItem[] } | null;
   return payload?.items ?? [];
+}
+
+export async function generateMetadata(ctx: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await ctx.params;
+  const post = await loadPostOnServer(id);
+  return {
+    title: post?.title || "Editar post",
+  };
 }
 
 export default async function PostEditPage(ctx: { params: Promise<{ id: string }> }) {

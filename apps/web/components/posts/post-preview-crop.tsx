@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { RatioIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -17,6 +17,12 @@ import { Button } from "@/components/ui/button";
 const PREVIEW_SIZE_MAX = 700;
 
 export type PreviewAspectRatio = "original" | "1:1" | "4:5" | "16:9";
+
+export type CropData = {
+  aspectRatio: PreviewAspectRatio;
+  cropX: number; // 0-1 (posição X relativa do centro da área cropada)
+  cropY: number; // 0-1 (posição Y relativa do centro da área cropada)
+};
 
 const ASPECT_OPTIONS: { value: PreviewAspectRatio; label: string }[] = [
   { value: "original", label: "Original" },
@@ -66,12 +72,13 @@ export function PostPreviewCrop(props: {
   imageAlt?: string;
   aspectRatio: PreviewAspectRatio;
   onAspectRatioChange: (value: PreviewAspectRatio) => void;
+  onCropChange?: (crop: CropData) => void;
   emptyPlaceholder?: string;
   onEmptyAreaClick?: () => void;
   isLoading?: boolean;
   className?: string;
 }) {
-  const { imageSrc, imageAlt, aspectRatio, onAspectRatioChange, emptyPlaceholder, onEmptyAreaClick, isLoading, className } = props;
+  const { imageSrc, imageAlt, aspectRatio, onAspectRatioChange, onCropChange, emptyPlaceholder, onEmptyAreaClick, isLoading, className } = props;
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
@@ -79,6 +86,13 @@ export function PostPreviewCrop(props: {
   const [viewportSize, setViewportSize] = useState(PREVIEW_SIZE_MAX);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const lastCropRef = useRef<CropData | null>(null);
+  const onCropChangeRef = useRef(onCropChange);
+
+  // Atualizar ref quando onCropChange mudar
+  useEffect(() => {
+    onCropChangeRef.current = onCropChange;
+  }, [onCropChange]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -112,6 +126,64 @@ export function PostPreviewCrop(props: {
       setPanY((p) => clampPan(p, frameSize.height, viewportSize));
     }
   }, [aspectRatio, canPan, frameSize.width, frameSize.height, viewportSize]);
+
+  // Calcular coordenadas de crop e notificar mudanças
+  useEffect(() => {
+    if (!onCropChangeRef.current || !imageSrc) return;
+    
+    let newCrop: CropData;
+    
+    // Se a imagem ainda não carregou ou não há tamanho natural, usar centro como padrão
+    if (naturalSize.width === 0 || naturalSize.height === 0) {
+      newCrop = {
+        aspectRatio,
+        cropX: 0.5,
+        cropY: 0.5,
+      };
+    }
+    // Se não pode fazer pan (sem overflow), usar centro
+    else if (!canPan || (overflowX === 0 && overflowY === 0)) {
+      newCrop = {
+        aspectRatio,
+        cropX: 0.5,
+        cropY: 0.5,
+      };
+    }
+    // Calcular crop baseado em panX/panY
+    else {
+      const maxPanX = overflowX > 0 ? overflowX / 2 : 0;
+      const maxPanY = overflowY > 0 ? overflowY / 2 : 0;
+      
+      // Normalizar panX/panY para -1 a 1 (onde 0 = centro)
+      const normalizedX = maxPanX > 0 && Math.abs(maxPanX) > 0.001 ? panX / maxPanX : 0;
+      const normalizedY = maxPanY > 0 && Math.abs(maxPanY) > 0.001 ? panY / maxPanY : 0;
+      
+      // Garantir que normalizedX/Y são números válidos
+      const safeNormalizedX = Number.isFinite(normalizedX) ? normalizedX : 0;
+      const safeNormalizedY = Number.isFinite(normalizedY) ? normalizedY : 0;
+      
+      const cropX = 0.5 - safeNormalizedX * 0.5;
+      const cropY = 0.5 - safeNormalizedY * 0.5;
+
+      newCrop = {
+        aspectRatio,
+        cropX: Math.max(0, Math.min(1, cropX)),
+        cropY: Math.max(0, Math.min(1, cropY)),
+      };
+    }
+
+    // Só chamar onCropChange se o valor realmente mudou
+    const lastCrop = lastCropRef.current;
+    if (
+      !lastCrop ||
+      lastCrop.aspectRatio !== newCrop.aspectRatio ||
+      Math.abs(lastCrop.cropX - newCrop.cropX) > 0.001 ||
+      Math.abs(lastCrop.cropY - newCrop.cropY) > 0.001
+    ) {
+      lastCropRef.current = newCrop;
+      onCropChangeRef.current(newCrop);
+    }
+  }, [panX, panY, aspectRatio, overflowX, overflowY, canPan, imageSrc, naturalSize.width, naturalSize.height]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {

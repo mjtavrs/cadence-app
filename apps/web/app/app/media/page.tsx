@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { MediaClient } from "./MediaClient";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { MediaUploadAction } from "./MediaClient";
+
+export const metadata: Metadata = {
+  title: "Biblioteca de mídia",
+};
 
 type MediaItem = {
   id: string;

@@ -166,3 +166,38 @@ export function formatRecifeDateTimeShort(isoUtc: string, timeZone: string = TZ)
   }).format(new Date(isoUtc));
 }
 
+export function formatDateForSection(isoUtc: string, timeZone: string = TZ): string {
+  const date = new Date(isoUtc);
+  const today = getTodayForCalendar(timeZone);
+  const todayParts = ymdFrom(today, timeZone);
+  const dateParts = ymdFrom(date, timeZone);
+
+  const isToday =
+    dateParts.year === todayParts.year &&
+    dateParts.month === todayParts.month &&
+    dateParts.day === todayParts.day;
+
+  if (isToday) return "Hoje";
+
+  const tomorrow = new Date(today);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowParts = ymdFrom(tomorrow, timeZone);
+  const isTomorrow =
+    dateParts.year === tomorrowParts.year &&
+    dateParts.month === tomorrowParts.month &&
+    dateParts.day === tomorrowParts.day;
+
+  if (isTomorrow) return "Amanhã";
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(date);
+}export function formatDateAndTime(isoUtc: string, timeZone: string = TZ): string {
+  const parts = getParts(new Date(isoUtc), timeZone);
+  const dateStr = formatYmdPtBr(new Date(isoUtc), timeZone);
+  const timeStr = `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+  return `${dateStr} • ${timeStr}`;
+}

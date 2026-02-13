@@ -183,6 +183,11 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const updateMediaFn = new NodejsFunction(this, "UpdateMediaFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/update.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const createPostFn = new NodejsFunction(this, "CreatePostFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/create.ts"),
       ...apiHandlerDefaults,
@@ -249,6 +254,7 @@ export class CadenceStack extends Stack {
       createMediaFn,
       listMediaFn,
       deleteMediaFn,
+      updateMediaFn,
       createPostFn,
       listPostsFn,
       getPostFn,
@@ -276,6 +282,7 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(createMediaFn);
     appTable.grantReadWriteData(listMediaFn);
     appTable.grantReadWriteData(deleteMediaFn);
+    appTable.grantReadWriteData(updateMediaFn);
     appTable.grantReadWriteData(createPostFn);
     appTable.grantReadWriteData(listPostsFn);
     appTable.grantReadWriteData(getPostFn);
@@ -306,7 +313,9 @@ export class CadenceStack extends Stack {
     media.addResource("presign").addMethod("POST", new apigateway.LambdaIntegration(presignMediaFn));
     media.addMethod("POST", new apigateway.LambdaIntegration(createMediaFn));
     media.addMethod("GET", new apigateway.LambdaIntegration(listMediaFn));
-    media.addResource("{id}").addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFn));
+    const mediaById = media.addResource("{id}");
+    mediaById.addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFn));
+    mediaById.addMethod("PATCH", new apigateway.LambdaIntegration(updateMediaFn));
 
     const posts = api.root.addResource("posts");
     posts.addMethod("POST", new apigateway.LambdaIntegration(createPostFn));

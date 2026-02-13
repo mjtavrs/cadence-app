@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { TagsInput } from "@/components/posts/tags-input";
 import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
-import { PostPreviewCrop, type PreviewAspectRatio } from "@/components/posts/post-preview-crop";
+import { PostPreviewCrop, type PreviewAspectRatio, type CropData } from "@/components/posts/post-preview-crop";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
 import {
   Dialog,
@@ -61,6 +61,7 @@ export default function NewPostPage() {
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [pickedMediaId, setPickedMediaId] = useState<string | null>(null);
   const [previewAspect, setPreviewAspect] = useState<PreviewAspectRatio>("1:1");
+  const [cropData, setCropData] = useState<CropData | null>(null);
 
   const scheduleDefault = useMemo(() => getNextQuarterSlotInTimeZone(), []);
 
@@ -156,12 +157,23 @@ export default function NewPostPage() {
     }
 
     setSaving(true);
+    console.log("Salvando post - cropData atual:", cropData);
     const body: Record<string, unknown> = {
       title: normalizedTitle,
       caption: normalizedCaption,
       tags,
       mediaIds: [selectedMediaId],
+      aspectRatio: previewAspect,
     };
+    
+    // Garantir que cropX e cropY são sempre números válidos
+    const cropXValue = typeof cropData?.cropX === "number" ? cropData.cropX : 0.5;
+    const cropYValue = typeof cropData?.cropY === "number" ? cropData.cropY : 0.5;
+    body.cropX = cropXValue;
+    body.cropY = cropYValue;
+    
+    console.log("Body sendo enviado:", body);
+    console.log("Valores de crop sendo enviados:", { cropX: cropXValue, cropY: cropYValue, typeOfCropX: typeof cropXValue, typeOfCropY: typeof cropYValue });
     if (scheduledAtUtc) body.scheduledAtUtc = scheduledAtUtc;
     const res = await fetch("/api/posts", {
       method: "POST",
@@ -213,7 +225,14 @@ export default function NewPostPage() {
                 imageSrc={selected?.url ?? null}
                 imageAlt={selected?.fileName ?? undefined}
                 aspectRatio={previewAspect}
-                onAspectRatioChange={setPreviewAspect}
+                onAspectRatioChange={(newAspect) => {
+                  setPreviewAspect(newAspect);
+                  setCropData(null); // Reset crop quando mudar aspect ratio
+                }}
+                onCropChange={(data) => {
+                  console.log("onCropChange chamado:", data);
+                  setCropData(data);
+                }}
                 emptyPlaceholder="Escolha uma foto do seu dispositivo"
                 onEmptyAreaClick={openFilePicker}
                 isLoading={uploadFromDeviceMutation.isPending}

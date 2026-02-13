@@ -1,9 +1,14 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { PostsClient, type Post } from "./PostsClient";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
+
+export const metadata: Metadata = {
+  title: "Posts",
+};
 
 async function loadPostsOnServer() {
   const store = await cookies();
@@ -27,11 +32,10 @@ export default async function PostsPage() {
       <PageHeader>
         <PageHeaderText>
           <PageTitle>Posts</PageTitle>
-          <PageDescription>Workflow editorial: DRAFT → IN_REVIEW → APPROVED → SCHEDULED.</PageDescription>
         </PageHeaderText>
         <PageActions>
           <Button asChild>
-            <Link href="/app/posts/new">Novo post</Link>
+            <Link href="/app/posts/new">Criar novo post</Link>
           </Button>
         </PageActions>
       </PageHeader>

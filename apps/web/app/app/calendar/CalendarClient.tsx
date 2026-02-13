@@ -3,17 +3,15 @@
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
+import { Page, PageActions, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import type { WeekBucket } from "./recife-time";
-import { getIsoWeekBucketRecife, getIsoWeekStartRecife, getMonthBucketRecife } from "./recife-time";
+import { getIsoWeekBucketRecife, getIsoWeekStartRecife, getMonthBucketRecife, getRecifePartsFromUtcDate } from "./recife-time";
 import { addWeeksUtc } from "./calendar-utils";
 import { monthBucketToLabelPtBr, type MonthBucket } from "./month-utils";
 import { WeekCalendarView } from "./week-view";
 import { MonthInfiniteCalendarView } from "./month-infinite-view";
-
-const tz = "America/Recife";
 
 export function CalendarClient(props: { initialWeek?: WeekBucket }) {
   const [view, setView] = useState<"week" | "month">("week");
@@ -34,16 +32,37 @@ export function CalendarClient(props: { initialWeek?: WeekBucket }) {
     []
   );
 
+  const weekNumber = useMemo(() => {
+    const [, weekStr] = week.split("-W");
+    return Number(weekStr);
+  }, [week]);
+
+  const monthYearLabel = useMemo(() => {
+    let label: string;
+    if (view === "week") {
+      const parts = getRecifePartsFromUtcDate(weekStartRecife);
+      if (!parts) return "Calendário";
+      const d = new Date(Date.UTC(parts.year, parts.month - 1, 1, 12, 0, 0));
+      label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
+    } else {
+      label = monthBucketToLabelPtBr(activeMonth);
+    }
+    // Capitalizar primeira letra do mês
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }, [view, weekStartRecife, activeMonth]);
+
   return (
     <Page>
       <PageHeader>
         <PageHeaderText>
-          <PageTitle>Calendário</PageTitle>
-          <PageDescription>
-            {view === "week"
-              ? `Semana ${week} (horário ${tz})`
-              : `${monthBucketToLabelPtBr(activeMonth)} (visão mensal)`}
-          </PageDescription>
+          <PageTitle className="flex items-center gap-2">
+            {monthYearLabel}
+            {view === "week" && (
+              <span className="text-muted-foreground text-sm font-normal">
+                Semana {weekNumber}
+              </span>
+            )}
+          </PageTitle>
         </PageHeaderText>
         <PageActions>
           <ToggleGroup

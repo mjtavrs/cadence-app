@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
+
+export const metadata: Metadata = {
+  title: "Cadence",
+};
 
 export default async function AppHomePage() {
   return (

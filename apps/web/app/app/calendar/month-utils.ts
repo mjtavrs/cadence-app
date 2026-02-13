@@ -43,7 +43,9 @@ export function monthBucketToLabelPtBr(monthBucket: MonthBucket) {
   const year = Number(y);
   const month = Number(m);
   const d = new Date(Date.UTC(year, month - 1, 1, 12, 0, 0));
-  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
+  const formatted = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
+  // Capitalizar primeira letra do mês
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
 export function monthToWeeks(monthDateUtc: Date): WeekBucket[] {

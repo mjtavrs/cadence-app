@@ -19,13 +19,16 @@ export default function Loading() {
         </PageActions>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <Card key={i} className="overflow-hidden">
-            <Skeleton className="aspect-square w-full rounded-none" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <Card key={i} className="overflow-hidden gap-0 p-0">
+            <Skeleton className="aspect-4/3 w-full rounded-none" />
             <div className="flex items-center justify-between gap-2 p-2">
-              <Skeleton className="h-3 w-32" />
-              <Skeleton className="h-8 w-16" />
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Skeleton className="size-4 shrink-0 rounded" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <Skeleton className="size-8 shrink-0 rounded" />
             </div>
           </Card>
         ))}

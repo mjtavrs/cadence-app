@@ -23,6 +23,9 @@ type Body = {
   mediaIds?: string[];
   tags?: string[] | string;
   scheduledAtUtc?: string;
+  aspectRatio?: string;
+  cropX?: number;
+  cropY?: number;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -42,6 +45,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const mediaIds = body.mediaIds ?? [];
   const tags = normalizeTags(body.tags);
   const rawScheduled = body.scheduledAtUtc?.trim();
+  const rawAspectRatio = body.aspectRatio?.trim();
+
+  const validAspectRatios = new Set(["original", "1:1", "4:5", "16:9"]);
+  const aspectRatio = rawAspectRatio && validAspectRatios.has(rawAspectRatio) ? rawAspectRatio : "1:1";
+  
+  // Validar e normalizar coordenadas de crop (0-1, padrão 0.5 = centro)
+  // IMPORTANTE: 0 é um valor válido, então precisamos verificar explicitamente se é number e está no range
+  const rawCropX = body.cropX;
+  const rawCropY = body.cropY;
+  const cropX = typeof rawCropX === "number" && !Number.isNaN(rawCropX) && rawCropX >= 0 && rawCropX <= 1 ? rawCropX : 0.5;
+  const cropY = typeof rawCropY === "number" && !Number.isNaN(rawCropY) && rawCropY >= 0 && rawCropY <= 1 ? rawCropY : 0.5;
 
   if (!workspaceId) return badRequest("workspaceId é obrigatório.");
   if (!title) return badRequest("Título é obrigatório.");
@@ -102,6 +116,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                     status: "DRAFT",
                     caption,
                     mediaIds,
+                    aspectRatio,
+                    cropX,
+                    cropY,
                     createdAt: now,
                     createdByUserId: userId,
                     createdByRole: membership.role,

@@ -8,7 +8,7 @@ function isProtectedPath(pathname: string) {
   return pathname.startsWith("/app") || pathname.startsWith("/w");
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const accessToken = req.cookies.get(ACCESS_COOKIE)?.value;
   const workspaceId = req.cookies.get(WORKSPACE_COOKIE)?.value;
@@ -43,4 +43,3 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: ["/app/:path*", "/w/:path*", "/login"],
 };
-

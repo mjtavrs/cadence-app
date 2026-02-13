@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 export type MediaItem = {
   id: string;
@@ -44,6 +45,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
   const queryClient = useQueryClient();
 
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const mediaQuery = useQuery({
     queryKey: ["media"],
@@ -114,6 +116,27 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["media"] });
+      toast.success("Mídia excluída.");
+    },
+    onSettled: () => {
+      setDeletingId(null);
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ id, fileName }: { id: string; fileName: string }) => {
+      const res = await fetch(`/api/media/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fileName }),
+      });
+      if (res.status === 501) throw new Error("UNAVAILABLE");
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao renomear.");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["media"] });
+      toast.success("Arquivo renomeado.");
     },
   });
 
@@ -142,6 +165,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
   async function deleteItem(id: string) {
     setError(null);
+    setDeletingId(id);
     try {
       await deleteMutation.mutateAsync(id);
     } catch (e) {
@@ -149,7 +173,21 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     }
   }
 
-  const isBusy = mediaQuery.isFetching || uploadMutation.isPending || deleteMutation.isPending;
+  async function renameItem(id: string, fileName: string) {
+    setError(null);
+    try {
+      await renameMutation.mutateAsync({ id, fileName });
+    } catch (e) {
+      if (e instanceof Error && e.message === "UNAVAILABLE") {
+        toast.info("Renomear estará disponível em breve.");
+        return;
+      }
+      setError(e instanceof Error ? e.message : "Falha ao renomear.");
+    }
+  }
+
+  const isBusy =
+    mediaQuery.isFetching || uploadMutation.isPending || deleteMutation.isPending || renameMutation.isPending;
 
   return {
     items,
@@ -160,8 +198,10 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     isLoading: mediaQuery.isLoading,
     isFetching: mediaQuery.isFetching,
     uploadPending: uploadMutation.isPending,
+    deletingId,
     onPickFile,
     deleteItem,
+    renameItem,
   } as const;
 }
 

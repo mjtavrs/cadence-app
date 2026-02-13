@@ -23,7 +23,7 @@ import type { WeekBucket } from "./recife-time";
 import { getIsoWeekStartRecife } from "./recife-time";
 import { addWeeksUtc } from "./calendar-utils";
 import { PostPreviewDialog, type CalendarPreviewPost } from "./post-preview-dialog";
-import { getRecifePartsFromIsoUtc, recifeDayKey, recifeDayKeyFromUtcDate } from "./recife-time";
+import { getRecifePartsFromIsoUtc, getRecifePartsFromUtcDate, recifeDayKey, recifeDayKeyFromUtcDate } from "./recife-time";
 
 type PostStatus =
   | "DRAFT"
@@ -64,12 +64,13 @@ function getErrorMessage(value: unknown) {
 }
 
 function formatDayHeader(dateUtc: Date) {
-  return new Intl.DateTimeFormat("pt-BR", {
+  const parts = getRecifePartsFromUtcDate(dateUtc);
+  if (!parts) return { weekday: "", day: "" };
+  const weekday = new Intl.DateTimeFormat("pt-BR", {
     weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
     timeZone: "America/Recife",
-  }).format(dateUtc);
+  }).format(dateUtc).replace(".", "");
+  return { weekday, day: parts.day };
 }
 
 function statusBarClass(status: PostStatus) {
@@ -222,15 +223,20 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
               const parts = getRecifePartsFromIsoUtc(d.toISOString());
               const dayKey = parts ? recifeDayKey(parts) : "";
               const isToday = dayKey && dayKey === todayKey;
+              const header = formatDayHeader(d);
               return (
                 <div
                   key={d.toISOString()}
-                  className={cn(
-                    "px-2 py-2 text-[11px] font-medium",
-                    isToday ? "text-destructive" : "text-muted-foreground",
-                  )}
+                  className="px-2 py-2 text-[11px] font-medium text-muted-foreground"
                 >
-                  {formatDayHeader(d)}
+                  <span>{header.weekday} </span>
+                  <span
+                    className={cn(
+                      isToday && "bg-destructive !text-white rounded px-1.5 py-0.5",
+                    )}
+                  >
+                    {header.day}
+                  </span>
                 </div>
               );
             })}
@@ -289,7 +295,6 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
                       "border-r",
                       "border-border/40",
                       isLastCol && "border-r-0",
-                      isToday && "bg-destructive/5",
                     )}
                   >
                     <div className="relative" style={{ height: contentHeight }}>

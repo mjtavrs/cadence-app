@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CopyIcon, TrashIcon } from "lucide-react";
+import { TrashIcon, Eye, Pencil, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { SlOptionsVertical } from "react-icons/sl";
+import { FaImage, FaVideo } from "react-icons/fa";
+import { FaInstagram } from "react-icons/fa";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,8 +21,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PostStatusBadge } from "@/components/posts/post-status-badge";
-import { formatRecifeDateTimeShort } from "@/lib/datetime";
+import { formatDateAndTime } from "@/lib/datetime";
 
 export type PostStatus = "DRAFT" | "IN_REVIEW" | "APPROVED" | "SCHEDULED" | "PUBLISHED" | "FAILED";
 
@@ -34,6 +44,7 @@ export type PostListItem = {
   scheduledAtUtc?: string;
 };
 
+
 export function PostCard(props: {
   item: PostListItem;
   isBusy: boolean;
@@ -42,101 +53,131 @@ export function PostCard(props: {
   onSchedule(): void;
   onCancel(): void;
   onDelete(): void;
+  onPreview?(): void;
+  onDuplicate?(): void;
+  onCaptionMore?: () => void;
 }) {
   const p = props.item;
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  async function copyCode() {
-    if (!p.shortCode) return;
-    try {
-      await navigator.clipboard.writeText(p.shortCode);
-      toast.success("Código copiado.");
-    } catch {
-      toast.error("Não foi possível copiar o código.");
+  function getStatusAction() {
+    switch (p.status) {
+      case "DRAFT":
+        return { label: "Enviar para review", action: props.onSubmit };
+      case "IN_REVIEW":
+        return { label: "Aprovar", action: props.onApprove };
+      case "APPROVED":
+        return { label: "Agendar", action: props.onSchedule };
+      case "SCHEDULED":
+        return { label: "Cancelar agendamento", action: props.onCancel };
+      default:
+        return null;
     }
   }
 
+  const statusAction = getStatusAction();
+
   return (
     <Card className="p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <PostStatusBadge status={p.status} />
-            {p.scheduledAtUtc && (
-              <span className="text-muted-foreground text-xs">
-                Agendado: {formatRecifeDateTimeShort(p.scheduledAtUtc)}
-              </span>
-            )}
-          </div>
-
-          <div className="space-y-1">
+      <div className="flex flex-col gap-4">
+        {/* Topo: Título + Status + Data */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <h3 className="text-base font-medium">{p.title?.trim() || "Sem título"}</h3>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="min-w-0 truncate text-sm font-medium">
-                {p.title?.trim() ? p.title : "Sem título"}
-              </div>
-              {p.shortCode ? (
-                <Badge variant="outline" className="gap-1">
-                  <span className="font-mono text-[11px]">{p.shortCode}</span>
-                  <Button type="button" variant="ghost" size="icon-xs" onClick={copyCode} aria-label="Copiar código">
-                    <CopyIcon className="h-3 w-3" />
-                  </Button>
-                </Badge>
-              ) : null}
+              <PostStatusBadge status={p.status} />
+              {p.scheduledAtUtc && (
+                <span className="text-muted-foreground text-xs">
+                  Agendado: {formatDateAndTime(p.scheduledAtUtc)}
+                </span>
+              )}
             </div>
-
-            {p.tags?.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {p.tags.slice(0, 6).map((t) => (
-                  <Badge key={t} variant="outline">
-                    #{t}
-                  </Badge>
-                ))}
-                {p.tags.length > 6 ? (
-                  <span className="text-muted-foreground text-xs">+{p.tags.length - 6}</span>
-                ) : null}
-              </div>
-            ) : null}
           </div>
-
-          <p className="line-clamp-2 text-sm text-zinc-900 dark:text-zinc-50">{p.caption}</p>
-
-          <div className="text-muted-foreground text-xs">
-            {p.mediaIds?.length ? `mídia: ${p.mediaIds[0]}` : "sem mídia"}
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8 shrink-0" disabled={props.isBusy} aria-label="Opções">
+                <SlOptionsVertical className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {statusAction && (
+                <DropdownMenuItem onClick={statusAction.action} disabled={props.isBusy}>
+                  {statusAction.label}
+                </DropdownMenuItem>
+              )}
+              {props.onPreview && (
+                <DropdownMenuItem onClick={props.onPreview}>
+                  <Eye className="mr-2 size-4" />
+                  Preview
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem asChild>
+                <Link href={`/app/posts/${encodeURIComponent(p.postId)}`}>
+                  <Pencil className="mr-2 size-4" />
+                  Editar
+                </Link>
+              </DropdownMenuItem>
+              {props.onDuplicate && (
+                <DropdownMenuItem onClick={props.onDuplicate}>
+                  <Copy className="mr-2 size-4" />
+                  Duplicar
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)} disabled={props.isBusy}>
+                <TrashIcon className="mr-2 size-4" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" asChild>
-            <Link href={`/app/posts/${encodeURIComponent(p.postId)}`}>Editar</Link>
-          </Button>
-          {p.status === "DRAFT" && (
-            <Button size="sm" disabled={props.isBusy} onClick={props.onSubmit}>
-              Enviar para review
-            </Button>
+        {/* Corpo: Legenda + Tags + Ícone de mídia */}
+        <div className="space-y-2">
+          <div className="text-sm text-muted-foreground">
+            {p.caption.length > 100 ? (
+              <>
+                {p.caption.slice(0, 100)}
+                <span className="text-muted-foreground">...</span>{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onCaptionMore?.();
+                  }}
+                >
+                  mais
+                </button>
+              </>
+            ) : (
+              p.caption
+            )}
+          </div>
+          {p.tags && p.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {p.tags.map((t) => (
+                <Badge key={t} variant="outline" className="text-xs">
+                  #{t}
+                </Badge>
+              ))}
+            </div>
           )}
-          {p.status === "IN_REVIEW" && (
-            <Button size="sm" disabled={props.isBusy} onClick={props.onApprove}>
-              Aprovar
-            </Button>
+          {p.mediaIds && p.mediaIds.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <FaImage className="size-4 text-muted-foreground" />
+              <span className="text-muted-foreground text-xs">Imagem</span>
+            </div>
           )}
-          {p.status === "APPROVED" && (
-            <Button size="sm" disabled={props.isBusy} onClick={props.onSchedule}>
-              Agendar
-            </Button>
-          )}
-          {p.status === "SCHEDULED" && (
-            <Button variant="secondary" size="sm" disabled={props.isBusy} onClick={props.onCancel}>
-              Cancelar
-            </Button>
-          )}
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={props.isBusy}
-            onClick={() => setDeleteOpen(true)}
-          >
-            <TrashIcon className="h-4 w-4" />
-          </Button>
+        </div>
+
+        {/* Footer: Rede social + Código */}
+        <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <FaInstagram className="size-3.5" />
+            <span>• Feed</span>
+          </div>
+          {p.shortCode && <span className="font-mono">Código: {p.shortCode}</span>}
         </div>
       </div>
 

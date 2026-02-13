@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 
-type PostStatus = "DRAFT" | "IN_REVIEW" | "APPROVED" | "SCHEDULED" | "PUBLISHED" | "FAILED";
+export type PostStatus = "DRAFT" | "IN_REVIEW" | "APPROVED" | "SCHEDULED" | "PUBLISHED" | "FAILED";
 
 const labels: Record<PostStatus, string> = {
   DRAFT: "Rascunho",

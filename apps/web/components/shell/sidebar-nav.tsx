@@ -23,13 +23,14 @@ export function SidebarNav(props: { collapsed: boolean; onNavigate?: () => void 
             href={item.href}
             onClick={() => props.onNavigate?.()}
             className={cn(
-              "flex items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm transition-colors",
+              "flex items-center rounded-lg border-2 text-sm transition-colors",
               "border-transparent text-muted-foreground",
               "hover:bg-zinc-900/5 hover:text-foreground dark:hover:bg-white/10",
               active && "border-border bg-zinc-900/5 text-foreground font-medium dark:bg-white/10",
+              props.collapsed ? "h-9 w-9 justify-center box-border" : "gap-3 px-3 py-2",
             )}
           >
-            <Icon className="h-4 w-4 shrink-0" />
+            <Icon className={cn("shrink-0", props.collapsed ? "h-5 w-5" : "h-4 w-4")} />
             {!props.collapsed && <span className="truncate">{item.label}</span>}
           </Link>
         );
