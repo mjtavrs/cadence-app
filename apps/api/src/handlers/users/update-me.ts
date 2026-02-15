@@ -17,15 +17,20 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
   if (!token) return unauthorized("Token ausente.");
 
-  let workspaceId: string | undefined;
+  let body: { name?: string; avatar?: string } = {};
   try {
-    const body = event.body ? (JSON.parse(event.body) as { workspaceId?: string }) : {};
-    workspaceId = body.workspaceId?.trim();
+    body = event.body ? (JSON.parse(event.body) as { name?: string; avatar?: string }) : {};
   } catch {
     return badRequest("Body inválido (JSON).");
   }
 
-  if (!workspaceId) return badRequest("workspaceId é obrigatório.");
+  const hasName = body.name !== undefined;
+  const hasAvatar = body.avatar !== undefined;
+  if (!hasName && !hasAvatar) {
+    return badRequest("Informe name e/ou avatar para atualizar.");
+  }
+  const name = hasName ? (typeof body.name === "string" ? body.name.trim() : undefined) : undefined;
+  const avatar = hasAvatar ? (typeof body.avatar === "string" ? body.avatar.trim() : undefined) : undefined;
 
   try {
     const authed = await getUserFromAccessToken(token);
@@ -44,27 +49,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const profile = existing.Item as UserProfileItem | undefined;
 
     const updatedAt = new Date().toISOString();
+    const nextProfile: UserProfileItem = {
+      PK: pk,
+      SK: "PROFILE",
+      ...(profile?.activeWorkspaceId !== undefined && { activeWorkspaceId: profile.activeWorkspaceId }),
+      name: name !== undefined ? name : profile?.name,
+      avatar: avatar !== undefined ? avatar : profile?.avatar,
+      updatedAt,
+    };
+
     await ddb.send(
       new PutCommand({
         TableName: tableName,
-        Item: {
-          PK: pk,
-          SK: "PROFILE",
-          activeWorkspaceId: workspaceId,
-          ...(profile?.name !== undefined && { name: profile.name }),
-          ...(profile?.avatar !== undefined && { avatar: profile.avatar }),
-          updatedAt,
-        },
+        Item: nextProfile,
       }),
     );
 
-    return json(200, { ok: true });
+    return json(200, {
+      ok: true,
+      name: nextProfile.name ?? null,
+      avatar: nextProfile.avatar ?? null,
+    });
   } catch (err: any) {
-    const name = err?.name as string | undefined;
-    if (name === "NotAuthorizedException") {
+    const errName = err?.name as string | undefined;
+    if (errName === "NotAuthorizedException") {
       return unauthorized("Sessão expirada. Faça login novamente.");
     }
-    return serverError("Não foi possível selecionar workspace agora.");
+    return serverError("Não foi possível atualizar o perfil agora.");
   }
 };
-

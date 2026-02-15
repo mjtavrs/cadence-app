@@ -153,6 +153,21 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const logoutFn = new NodejsFunction(this, "AuthLogoutFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/auth/logout.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const changePasswordFn = new NodejsFunction(this, "AuthChangePasswordFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/auth/change-password.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const updateMeFn = new NodejsFunction(this, "UpdateMeFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/users/update-me.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const listWorkspacesFn = new NodejsFunction(this, "ListWorkspacesFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/list.ts"),
       ...apiHandlerDefaults,
@@ -248,6 +263,7 @@ export class CadenceStack extends Stack {
       refreshFn,
       meFn,
       newPasswordFn,
+      updateMeFn,
       listWorkspacesFn,
       setActiveWorkspaceFn,
       presignMediaFn,
@@ -276,6 +292,8 @@ export class CadenceStack extends Stack {
       );
     }
 
+    appTable.grantReadData(meFn);
+    appTable.grantReadWriteData(updateMeFn);
     appTable.grantReadWriteData(listWorkspacesFn);
     appTable.grantReadWriteData(setActiveWorkspaceFn);
     appTable.grantReadWriteData(presignMediaFn);
@@ -299,11 +317,32 @@ export class CadenceStack extends Stack {
     mediaBucket.grantRead(listMediaFn);
     mediaBucket.grantDelete(deleteMediaFn);
 
+    logoutFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["cognito-idp:GlobalSignOut"],
+        resources: ["*"],
+      }),
+    );
+
+    changePasswordFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["cognito-idp:ChangePassword"],
+        resources: ["*"],
+      }),
+    );
+
     const auth = api.root.addResource("auth");
     auth.addResource("login").addMethod("POST", new apigateway.LambdaIntegration(loginFn));
     auth.addResource("refresh").addMethod("POST", new apigateway.LambdaIntegration(refreshFn));
     auth.addResource("new-password").addMethod("POST", new apigateway.LambdaIntegration(newPasswordFn));
     auth.addResource("me").addMethod("GET", new apigateway.LambdaIntegration(meFn));
+    auth.addResource("logout").addMethod("POST", new apigateway.LambdaIntegration(logoutFn));
+    auth.addResource("change-password").addMethod("POST", new apigateway.LambdaIntegration(changePasswordFn));
+
+    const users = api.root.addResource("users");
+    users.addResource("me").addMethod("PATCH", new apigateway.LambdaIntegration(updateMeFn));
 
     const workspaces = api.root.addResource("workspaces");
     workspaces.addMethod("GET", new apigateway.LambdaIntegration(listWorkspacesFn));

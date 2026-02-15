@@ -366,7 +366,7 @@ export function WeekCalendarView(props: { week: WeekBucket }) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => postToDelete && deleteMutation.mutate(postToDelete.postId)}
             >
               Excluir

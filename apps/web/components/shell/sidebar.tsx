@@ -2,10 +2,17 @@
 
 import Image from "next/image";
 import { useTheme } from "next-themes";
+
 import { cn } from "@/lib/utils";
 import { SidebarNav } from "./sidebar-nav";
+import { SidebarUserBlock } from "./sidebar-user-block";
+import type { AppShellUser } from "./app-shell-client";
 
-export function Sidebar(props: { collapsed: boolean }) {
+export function Sidebar(props: {
+  collapsed: boolean;
+  user: AppShellUser;
+  workspaceRole: string | null;
+}) {
   const { resolvedTheme } = useTheme();
   const smallLogoSrc = "/logo_small.webp";
   const largeLogoSrc = resolvedTheme === "dark" ? "/logo_light.webp" : "/logo_dark.webp";
@@ -13,14 +20,14 @@ export function Sidebar(props: { collapsed: boolean }) {
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 border-r bg-background md:flex",
+        "sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-background md:flex",
         "transition-all duration-300 ease-in-out",
         props.collapsed ? "w-[72px]" : "w-[260px]",
       )}
     >
       <div
         className={cn(
-          "flex w-full flex-col gap-4",
+          "flex w-full flex-1 flex-col gap-4",
           props.collapsed ? "items-center p-3" : "p-4",
         )}
       >
@@ -61,6 +68,19 @@ export function Sidebar(props: { collapsed: boolean }) {
         </div>
 
         <SidebarNav collapsed={props.collapsed} />
+      </div>
+
+      <div
+        className={cn(
+          "p-3",
+          props.collapsed ? "flex justify-center" : "px-4",
+        )}
+      >
+        <SidebarUserBlock
+          user={props.user}
+          workspaceRole={props.workspaceRole}
+          collapsed={props.collapsed}
+        />
       </div>
     </aside>
   );

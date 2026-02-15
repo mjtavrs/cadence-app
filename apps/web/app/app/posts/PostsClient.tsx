@@ -7,12 +7,20 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
 import { getNextQuarterSlotInTimeZone, formatDateForSection } from "@/lib/datetime";
 import { PostCard, type PostListItem, type PostStatus } from "@/components/posts/post-card";
 import { PostsFiltersBar } from "@/components/posts/posts-filters-bar";
 import { PostPreviewSheet } from "@/components/posts/post-preview-sheet";
+import { MdOutlineHistoryEdu } from "react-icons/md";
 
 export type Post = {
   postId: string;
@@ -45,15 +53,16 @@ export function PostsClient(props: { initialItems: Post[] }) {
   const [scheduleDefaultDate, setScheduleDefaultDate] = useState<Date>(() => new Date());
   const [scheduleDefaultTime, setScheduleDefaultTime] = useState<string>(() => "00:00");
 
-  const [statusFilter, setStatusFilter] = useState<"ALL" | PostStatus>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilters, setStatusFilters] = useState<PostStatus[]>([]);
   const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [previewPostId, setPreviewPostId] = useState<string | null>(null);
 
   type ListResponse = { items: Post[] };
 
   async function loadPosts() {
     const url = new URL("/api/posts", window.location.origin);
-    if (statusFilter !== "ALL") url.searchParams.set("status", statusFilter);
     const res = await fetch(url, { cache: "no-store" });
     const payload = (await res.json().catch(() => null)) as unknown;
     if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao listar posts.");
@@ -61,20 +70,61 @@ export function PostsClient(props: { initialItems: Post[] }) {
   }
 
   const postsQuery = useQuery({
-    queryKey: ["posts", statusFilter],
+    queryKey: ["posts"],
     queryFn: loadPosts,
-    initialData: statusFilter === "ALL" ? props.initialItems : undefined,
+    initialData: props.initialItems,
     staleTime: 15_000,
   });
 
+  const availableTags = useMemo(() => {
+    const items = postsQuery.data ?? [];
+    const set = new Set<string>();
+    for (const p of items) {
+      for (const t of p.tags ?? []) {
+        const n = t.trim().toLowerCase();
+        if (n) set.add(n);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [postsQuery.data]);
+
   const filteredItems = useMemo(() => {
-    const fetchedItems = postsQuery.data ?? [];
-    if (!tagFilters.length) return fetchedItems;
-    return fetchedItems.filter((p) => {
-      const tags = (p.tags ?? []).map((t) => t.toLowerCase());
-      return tagFilters.some((t) => tags.includes(t.toLowerCase()));
-    });
-  }, [postsQuery.data, tagFilters]);
+    const items = postsQuery.data ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    const bySearch = q
+      ? items.filter((p) => {
+          const title = (p.title ?? "").toLowerCase();
+          const code = (p.shortCode ?? "").toLowerCase();
+          return title.includes(q) || code.includes(q);
+        })
+      : items;
+    const byStatus =
+      statusFilters.length > 0
+        ? bySearch.filter((p) => statusFilters.includes(p.status))
+        : bySearch;
+    const byTags =
+      tagFilters.length > 0
+        ? byStatus.filter((p) => {
+            const postTags = (p.tags ?? []).map((t) => t.toLowerCase());
+            return tagFilters.some((t) => postTags.includes(t.toLowerCase()));
+          })
+        : byStatus;
+    const byDate =
+      dateRange.from != null || dateRange.to != null
+        ? byTags.filter((p) => {
+            const scheduled = p.scheduledAtUtc ? new Date(p.scheduledAtUtc).getTime() : null;
+            if (scheduled == null) return !dateRange.from && !dateRange.to;
+            if (dateRange.from != null && scheduled < dateRange.from.getTime()) return false;
+            if (dateRange.to != null) {
+              const toEnd = new Date(dateRange.to);
+              toEnd.setHours(23, 59, 59, 999);
+              if (scheduled > toEnd.getTime()) return false;
+            }
+            return true;
+          })
+        : byTags;
+    return byDate;
+  }, [postsQuery.data, searchQuery, statusFilters, tagFilters, dateRange.from, dateRange.to]);
 
   const groupedItems = useMemo(() => {
     const groups = new Map<string, Post[]>();
@@ -221,28 +271,25 @@ export function PostsClient(props: { initialItems: Post[] }) {
       />
 
       <PostsFiltersBar
-        status={statusFilter}
-        onStatusChange={setStatusFilter}
-        tags={tagFilters}
-        onTagsChange={setTagFilters}
-        onResolveCode={async (code) => {
-          const res = await fetch(`/api/posts/resolve?code=${encodeURIComponent(code)}`);
-          const payload = (await res.json().catch(() => null)) as unknown;
-          const value = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
-          if (!res.ok) {
-            throw new Error(typeof value?.message === "string" ? value.message : "Código não encontrado.");
-          }
-          const postId = typeof value?.postId === "string" ? value.postId : undefined;
-          if (!postId) throw new Error("Código não encontrado.");
-          router.push(`/app/posts/${encodeURIComponent(postId)}`);
-        }}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        statusFilters={statusFilters}
+        onStatusFiltersChange={setStatusFilters}
+        tagFilters={tagFilters}
+        onTagFiltersChange={setTagFilters}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        availableTags={availableTags}
       />
 
       {postsQuery.isLoading ? (
         <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : filteredItems.length === 0 ? (
-        <Empty>
+        <Empty className="min-h-full border border-dashed">
           <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MdOutlineHistoryEdu className="size-6" />
+            </EmptyMedia>
             <EmptyTitle>Nenhum post ainda</EmptyTitle>
             <EmptyDescription>Crie seu primeiro post para começar o calendário.</EmptyDescription>
           </EmptyHeader>

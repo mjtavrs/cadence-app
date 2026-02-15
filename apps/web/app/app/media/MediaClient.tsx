@@ -391,7 +391,6 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
                 }}
               />
               <Button
-                variant="outline"
                 size="sm"
                 disabled={media.isBusy || !media.canUpload}
                 onClick={() => emptyFileInputRef.current?.click()}
@@ -465,7 +464,7 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  variant="destructive"
                   onClick={() => {
                     if (deleteConfirm) {
                       media.deleteItem(deleteConfirm.id);

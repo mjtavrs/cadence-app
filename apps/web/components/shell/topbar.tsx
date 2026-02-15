@@ -43,7 +43,7 @@ export function Topbar(props: {
 
       <div className="flex items-center gap-1.5">
         <Button variant="secondary" size="sm" asChild>
-          <Link href="/w">Workspace</Link>
+          <Link href="/w">Ver meus workspaces</Link>
         </Button>
         <ThemeToggle />
       </div>

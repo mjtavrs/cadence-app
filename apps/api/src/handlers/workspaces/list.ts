@@ -18,6 +18,9 @@ type UserProfileItem = {
   PK: string;
   SK: "PROFILE";
   activeWorkspaceId?: string;
+  name?: string;
+  avatar?: string;
+  updatedAt?: string;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
