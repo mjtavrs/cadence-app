@@ -8,6 +8,7 @@ import { SidebarUserBlock } from "@/components/shell/sidebar-user-block";
 import { Topbar } from "@/components/shell/topbar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { WorkspaceRoleProvider } from "@/hooks/use-workspace-role";
 
 export type AppShellUser = {
   name: string | null;
@@ -25,6 +26,7 @@ export function AppShellClient(props: {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
+    <WorkspaceRoleProvider role={props.workspaceRole}>
     <div className="min-h-screen bg-background">
       <div className="flex w-full">
         <Sidebar
@@ -65,6 +67,7 @@ export function AppShellClient(props: {
         </div>
       </div>
     </div>
+    </WorkspaceRoleProvider>
   );
 }
 

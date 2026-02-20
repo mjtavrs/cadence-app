@@ -1,41 +1,26 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
-import { TagsInput } from "@/components/posts/tags-input";
+import { Page, PageActions, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
-import { PostPreviewCrop, type PreviewAspectRatio, type CropData } from "@/components/posts/post-preview-crop";
-import { EmojiPicker } from "@/components/ui/emoji-picker";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { type PreviewAspectRatio, type CropData } from "@/components/posts/post-preview-crop";
+import { StepHeader, type CreationStep } from "@/components/posts/create/step-header";
+import { StepSelectMedia, type MediaItem } from "@/components/posts/create/step-select-media";
+import { StepCropAdjust } from "@/components/posts/create/step-crop-adjust";
+import { StepCreatePost } from "@/components/posts/create/step-create-post";
 import { getNextQuarterSlotInTimeZone } from "@/lib/datetime";
-import { formatRecifeDateTimeShort } from "@/lib/datetime";
+import { useWorkspaceRole } from "@/hooks/use-workspace-role";
 
-type MediaItem = {
-  id: string;
-  url: string;
-  fileName: string | null;
-  createdAt: string;
-};
-
-type MediaListResponse = {
-  items: MediaItem[];
-};
+type MediaListResponse = { items: MediaItem[] };
+type PresignResponse = { mediaId: string; s3Key: string; uploadUrl: string };
 
 function getErrorMessage(value: unknown) {
   if (!value || typeof value !== "object") return null;
@@ -44,13 +29,12 @@ function getErrorMessage(value: unknown) {
   return null;
 }
 
-type PresignResponse = { mediaId: string; s3Key: string; uploadUrl: string };
-
 export default function NewPostPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { role } = useWorkspaceRole();
 
+  const [step, setStep] = useState<CreationStep>("select");
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -65,16 +49,6 @@ export default function NewPostPage() {
 
   const scheduleDefault = useMemo(() => getNextQuarterSlotInTimeZone(), []);
 
-  function openLibraryDialog() {
-    setPickedMediaId(selectedMediaId);
-    setLibraryDialogOpen(true);
-  }
-
-  function confirmLibraryPick() {
-    if (pickedMediaId) setSelectedMediaId(pickedMediaId);
-    setLibraryDialogOpen(false);
-  }
-
   const normalizedTitle = useMemo(() => title.replace(/\s+/g, " ").trim(), [title]);
   const normalizedCaption = useMemo(() => caption.replace(/\s+/g, " ").trim(), [caption]);
 
@@ -84,8 +58,7 @@ export default function NewPostPage() {
       const res = await fetch("/api/media", { cache: "no-store" });
       const payload = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar mídias.");
-      const data = payload as MediaListResponse;
-      return data.items ?? [];
+      return ((payload as MediaListResponse).items ?? []) as MediaItem[];
     },
     staleTime: 30_000,
   });
@@ -127,54 +100,55 @@ export default function NewPostPage() {
   const media = useMemo(() => mediaQuery.data ?? [], [mediaQuery.data]);
   const selected = useMemo(() => media.find((m) => m.id === selectedMediaId) ?? null, [media, selectedMediaId]);
 
-  function openFilePicker() {
-    fileInputRef.current?.click();
+  function confirmLibraryPick() {
+    if (pickedMediaId) setSelectedMediaId(pickedMediaId);
+    setLibraryDialogOpen(false);
   }
 
-  function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione um arquivo de imagem.");
-      return;
-    }
-    uploadFromDeviceMutation.mutate(file);
+  function handleAdvance() {
+    if (step === "select") setStep("crop");
+    else if (step === "crop") setStep("create");
   }
 
-  async function save() {
-    if (!normalizedTitle) {
-      toast.error("O título não pode estar vazio.");
-      return;
-    }
-    if (!normalizedCaption) {
-      toast.error("A legenda não pode estar vazia.");
-      return;
-    }
+  function handleBack() {
+    if (step === "crop") setStep("select");
+    else if (step === "create") setStep("crop");
+  }
+
+  async function savePost(asDraft: boolean) {
     if (!selectedMediaId) {
       toast.error("Selecione uma imagem.");
       return;
     }
+    if (!asDraft && !normalizedCaption) {
+      toast.error("A legenda não pode estar vazia.");
+      return;
+    }
+    if (!asDraft && !scheduledAtUtc) {
+      toast.error("Defina uma data e hora para agendar o post.");
+      return;
+    }
 
     setSaving(true);
-    console.log("Salvando post - cropData atual:", cropData);
     const body: Record<string, unknown> = {
-      title: normalizedTitle,
-      caption: normalizedCaption,
+      title: normalizedTitle || undefined,
+      caption: normalizedCaption || undefined,
       tags,
       mediaIds: [selectedMediaId],
       aspectRatio: previewAspect,
+      cropX: typeof cropData?.cropX === "number" ? cropData.cropX : 0.5,
+      cropY: typeof cropData?.cropY === "number" ? cropData.cropY : 0.5,
     };
-    
-    // Garantir que cropX e cropY são sempre números válidos
-    const cropXValue = typeof cropData?.cropX === "number" ? cropData.cropX : 0.5;
-    const cropYValue = typeof cropData?.cropY === "number" ? cropData.cropY : 0.5;
-    body.cropX = cropXValue;
-    body.cropY = cropYValue;
-    
-    console.log("Body sendo enviado:", body);
-    console.log("Valores de crop sendo enviados:", { cropX: cropXValue, cropY: cropYValue, typeOfCropX: typeof cropXValue, typeOfCropY: typeof cropYValue });
-    if (scheduledAtUtc) body.scheduledAtUtc = scheduledAtUtc;
+
+    if (asDraft) {
+      body.saveAsDraft = true;
+    } else {
+      body.scheduledAtUtc = scheduledAtUtc;
+      if (role === "OWNER") {
+        body.directSchedule = true;
+      }
+    }
+
     const res = await fetch("/api/posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -187,16 +161,24 @@ export default function NewPostPage() {
       return;
     }
     setSaving(false);
-    toast.success("Post criado.");
+
+    if (asDraft) {
+      toast.success("Rascunho salvo.");
+    } else if (role === "OWNER") {
+      toast.success("Post agendado.");
+    } else {
+      toast.success("Post criado. Aguardando aprovação.");
+    }
     router.replace("/app/posts");
   }
+
+  const canAdvance = step === "select" ? !!selectedMediaId : true;
 
   return (
     <Page>
       <PageHeader>
         <PageHeaderText>
           <PageTitle>Novo post</PageTitle>
-          <PageDescription>No MVP, cada post tem 1 imagem + legenda.</PageDescription>
         </PageHeaderText>
         <PageActions>
           <Button variant="secondary" asChild>
@@ -205,104 +187,76 @@ export default function NewPostPage() {
         </PageActions>
       </PageHeader>
 
+      <div className="mx-auto flex max-w-4xl items-start gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground mb-4">
+        <Info className="mt-0.5 size-4 shrink-0" />
+        <span>Por enquanto, apenas 1 imagem é permitida por post.</span>
+      </div>
+
       <div className="flex justify-center">
-        <div className="flex flex-wrap gap-6">
-          <Card className="flex w-[732px] max-w-[calc(100vw-2rem)] p-4 shrink-0 flex-col overflow-hidden">
-          <div className="border-b flex pb-4 items-center justify-center px-4 text-sm font-medium">
-            Prévia
-          </div>
-          <div className="flex flex-col items-center p-4">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              aria-hidden
-              onChange={onFileSelected}
+        {step === "create" ? (
+          <div className="w-full max-w-[1140px]">
+            <Card className="mb-4 p-4">
+              <StepHeader
+                step={step}
+                canAdvance={false}
+                onBack={handleBack}
+              />
+            </Card>
+            <StepCreatePost
+              imageSrc={selected?.url ?? null}
+              imageAlt={selected?.fileName ?? undefined}
+              aspectRatio={previewAspect}
+              cropData={cropData}
+              title={title}
+              onTitleChange={setTitle}
+              tags={tags}
+              onTagsChange={setTags}
+              caption={caption}
+              onCaptionChange={setCaption}
+              scheduledAtUtc={scheduledAtUtc}
+              onOpenSchedule={() => setScheduleModalOpen(true)}
+              saving={saving}
+              onSaveDraft={() => void savePost(true)}
+              onSchedulePost={() => void savePost(false)}
             />
-            <div className="w-full min-w-0" style={{ maxWidth: 700 }}>
-              <PostPreviewCrop
+          </div>
+        ) : (
+          <Card className="flex w-[732px] max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-hidden p-4">
+            <StepHeader
+              step={step}
+              canAdvance={canAdvance}
+              onBack={step !== "select" ? handleBack : undefined}
+              onAdvance={handleAdvance}
+            />
+            {step === "select" && (
+              <StepSelectMedia
+                media={media}
+                mediaLoading={mediaQuery.isLoading}
+                selectedMediaId={selectedMediaId}
+                onSelectMedia={setSelectedMediaId}
+                onUploadFile={(file) => uploadFromDeviceMutation.mutate(file)}
+                uploadPending={uploadFromDeviceMutation.isPending}
+                libraryDialogOpen={libraryDialogOpen}
+                onLibraryDialogOpenChange={setLibraryDialogOpen}
+                pickedMediaId={pickedMediaId}
+                onPickedMediaIdChange={setPickedMediaId}
+                onConfirmLibraryPick={confirmLibraryPick}
+              />
+            )}
+            {step === "crop" && (
+              <StepCropAdjust
                 imageSrc={selected?.url ?? null}
                 imageAlt={selected?.fileName ?? undefined}
                 aspectRatio={previewAspect}
                 onAspectRatioChange={(newAspect) => {
                   setPreviewAspect(newAspect);
-                  setCropData(null); // Reset crop quando mudar aspect ratio
+                  setCropData(null);
                 }}
-                onCropChange={(data) => {
-                  console.log("onCropChange chamado:", data);
-                  setCropData(data);
-                }}
-                emptyPlaceholder="Escolha uma foto do seu dispositivo"
-                onEmptyAreaClick={openFilePicker}
-                isLoading={uploadFromDeviceMutation.isPending}
+                onCropChange={setCropData}
               />
-            </div>
-            <div className="mt-3 w-full" style={{ maxWidth: 700 }}>
-              <Button variant="default" size="sm" className="w-full" onClick={openLibraryDialog}>
-                Ou escolha da sua biblioteca
-              </Button>
-            </div>
-          </div>
+            )}
           </Card>
-
-          <Card className="w-[420px] shrink-0 p-4 h-fit">
-            <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Título</div>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Post do Dia das Mães" />
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Tags</div>
-              <TagsInput value={tags} onChange={setTags} />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Legenda</div>
-                <EmojiPicker onSelect={(emoji) => setCaption((c) => `${c}${emoji}`)} />
-              </div>
-              <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={8} />
-              <div className="text-muted-foreground text-xs">
-                {normalizedCaption.length ? `${normalizedCaption.length} caractere(s)` : "Vazio"}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Data e hora de publicação</div>
-              {scheduledAtUtc ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {formatRecifeDateTimeShort(scheduledAtUtc)}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setScheduleModalOpen(true)}
-                  >
-                    Alterar
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setScheduleModalOpen(true)}
-                >
-                  Definir data e hora
-                </Button>
-              )}
-            </div>
-
-            <Button className="w-full" disabled={saving} onClick={() => void save()}>
-              {saving ? "Salvando..." : "Criar post"}
-            </Button>
-            </div>
-          </Card>
-        </div>
+        )}
       </div>
 
       <SchedulePostDialog
@@ -313,46 +267,6 @@ export default function NewPostPage() {
         defaultTimeHHmm={scheduleDefault.time}
         onSelectScheduledAtUtc={setScheduledAtUtc}
       />
-
-      <Dialog open={libraryDialogOpen} onOpenChange={setLibraryDialogOpen}>
-        <DialogContent className="sm:max-w-2xl" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Biblioteca de mídia</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="h-[60vh] pr-4">
-            {mediaQuery.isLoading ? (
-              <p className="text-muted-foreground py-4 text-sm">Carregando...</p>
-            ) : media.length === 0 ? (
-              <p className="text-muted-foreground py-4 text-sm">Nenhuma mídia disponível. Envie arquivos em Mídia.</p>
-            ) : (
-              <div className="grid grid-cols-4 gap-3 py-2">
-                {media.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`relative aspect-square overflow-hidden rounded-lg border-2 transition-colors ${
-                      pickedMediaId === m.id ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-muted-foreground/50"
-                    }`}
-                    onClick={() => setPickedMediaId(m.id)}
-                    title={m.fileName ?? m.id}
-                  >
-                    <img src={m.url} alt={m.fileName ?? "mídia"} className="h-full w-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLibraryDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={confirmLibraryPick} disabled={!pickedMediaId}>
-              Abrir
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Page>
   );
 }
-

@@ -129,7 +129,12 @@ export function PostsClient(props: { initialItems: Post[] }) {
   const groupedItems = useMemo(() => {
     const groups = new Map<string, Post[]>();
     for (const post of filteredItems) {
-      const dateKey = post.scheduledAtUtc ? formatDateForSection(post.scheduledAtUtc) : "Sem agendamento";
+      const isDraft = post.status === "DRAFT";
+      const dateKey = isDraft
+        ? "Rascunhos"
+        : post.scheduledAtUtc
+          ? formatDateForSection(post.scheduledAtUtc)
+          : "Sem agendamento";
       if (!groups.has(dateKey)) groups.set(dateKey, []);
       groups.get(dateKey)!.push(post);
     }
@@ -138,6 +143,8 @@ export function PostsClient(props: { initialItems: Post[] }) {
       if (b[0] === "Hoje") return 1;
       if (a[0] === "Amanhã") return -1;
       if (b[0] === "Amanhã") return 1;
+      if (a[0] === "Rascunhos") return 1;
+      if (b[0] === "Rascunhos") return -1;
       if (a[0] === "Sem agendamento") return 1;
       if (b[0] === "Sem agendamento") return -1;
       return b[0].localeCompare(a[0], "pt-BR");

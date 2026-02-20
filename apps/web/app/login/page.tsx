@@ -11,6 +11,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
 const loginSchema = z.object({
@@ -183,9 +184,8 @@ function LoginPageContent() {
 
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 autoComplete="current-password"
                 disabled={isSubmitting}
                 {...loginForm.register("password")}
@@ -207,9 +207,8 @@ function LoginPageContent() {
           <form onSubmit={newPasswordForm.handleSubmit(onNewPasswordSubmit)} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="newPassword">Nova senha</Label>
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 autoComplete="new-password"
                 disabled={isSubmitting}
                 {...newPasswordForm.register("newPassword")}
@@ -230,9 +229,8 @@ function LoginPageContent() {
 
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 autoComplete="new-password"
                 disabled={isSubmitting}
                 {...newPasswordForm.register("confirmPassword")}

@@ -37,6 +37,8 @@ type CreateBody = {
   aspectRatio?: string;
   cropX?: number;
   cropY?: number;
+  saveAsDraft?: boolean;
+  directSchedule?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -47,20 +49,42 @@ export async function POST(req: Request) {
   if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
 
   const body = (await req.json().catch(() => null)) as CreateBody | null;
-  if (!body?.title || !body.caption || !body.mediaIds) {
-    return NextResponse.json({ message: "Parâmetros inválidos." }, { status: 400 });
+  if (!body) {
+    return NextResponse.json({ message: "Body inválido." }, { status: 400 });
+  }
+
+  const saveAsDraft = body.saveAsDraft === true;
+  
+  if (!saveAsDraft) {
+    if (!body.title || !body.caption || !body.mediaIds) {
+      return NextResponse.json({ message: "Parâmetros inválidos." }, { status: 400 });
+    }
+  } else {
+    if (!body.mediaIds) {
+      return NextResponse.json({ message: "mediaIds é obrigatório." }, { status: 400 });
+    }
   }
 
   const payload: Record<string, unknown> = {
     workspaceId,
-    title: body.title,
-    caption: body.caption,
+    title: body.title || "",
+    caption: body.caption || "",
     mediaIds: body.mediaIds,
     tags: body.tags ?? [],
   };
+  
+  if (saveAsDraft) {
+    payload.saveAsDraft = true;
+  }
+  
   if (typeof body.scheduledAtUtc === "string" && body.scheduledAtUtc.trim()) {
     payload.scheduledAtUtc = body.scheduledAtUtc.trim();
   }
+  
+  if (typeof body.directSchedule === "boolean" && body.directSchedule) {
+    payload.directSchedule = true;
+  }
+  
   if (typeof body.aspectRatio === "string" && body.aspectRatio.trim()) {
     payload.aspectRatio = body.aspectRatio.trim();
   }

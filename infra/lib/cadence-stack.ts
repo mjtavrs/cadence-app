@@ -183,8 +183,18 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const presignMediaBatchFn = new NodejsFunction(this, "PresignMediaBatchFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/presign-batch.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const createMediaFn = new NodejsFunction(this, "CreateMediaFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/create.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const createMediaBatchFn = new NodejsFunction(this, "CreateMediaBatchFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/create-batch.ts"),
       ...apiHandlerDefaults,
     });
 
@@ -195,6 +205,11 @@ export class CadenceStack extends Stack {
 
     const deleteMediaFn = new NodejsFunction(this, "DeleteMediaFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/delete.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const deleteMediaBatchFn = new NodejsFunction(this, "DeleteMediaBatchFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/delete-batch.ts"),
       ...apiHandlerDefaults,
     });
 
@@ -267,9 +282,12 @@ export class CadenceStack extends Stack {
       listWorkspacesFn,
       setActiveWorkspaceFn,
       presignMediaFn,
+      presignMediaBatchFn,
       createMediaFn,
+      createMediaBatchFn,
       listMediaFn,
       deleteMediaFn,
+      deleteMediaBatchFn,
       updateMediaFn,
       createPostFn,
       listPostsFn,
@@ -297,9 +315,12 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(listWorkspacesFn);
     appTable.grantReadWriteData(setActiveWorkspaceFn);
     appTable.grantReadWriteData(presignMediaFn);
+    appTable.grantReadWriteData(presignMediaBatchFn);
     appTable.grantReadWriteData(createMediaFn);
+    appTable.grantReadWriteData(createMediaBatchFn);
     appTable.grantReadWriteData(listMediaFn);
     appTable.grantReadWriteData(deleteMediaFn);
+    appTable.grantReadWriteData(deleteMediaBatchFn);
     appTable.grantReadWriteData(updateMediaFn);
     appTable.grantReadWriteData(createPostFn);
     appTable.grantReadWriteData(listPostsFn);
@@ -314,8 +335,10 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(resolvePostCodeFn);
 
     mediaBucket.grantPut(presignMediaFn);
+    mediaBucket.grantPut(presignMediaBatchFn);
     mediaBucket.grantRead(listMediaFn);
     mediaBucket.grantDelete(deleteMediaFn);
+    mediaBucket.grantDelete(deleteMediaBatchFn);
 
     logoutFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -349,8 +372,13 @@ export class CadenceStack extends Stack {
     workspaces.addResource("active").addMethod("POST", new apigateway.LambdaIntegration(setActiveWorkspaceFn));
 
     const media = api.root.addResource("media");
-    media.addResource("presign").addMethod("POST", new apigateway.LambdaIntegration(presignMediaFn));
+    const mediaPresign = media.addResource("presign");
+    mediaPresign.addMethod("POST", new apigateway.LambdaIntegration(presignMediaFn));
+    mediaPresign.addResource("batch").addMethod("POST", new apigateway.LambdaIntegration(presignMediaBatchFn));
     media.addMethod("POST", new apigateway.LambdaIntegration(createMediaFn));
+    const mediaBatch = media.addResource("batch");
+    mediaBatch.addMethod("POST", new apigateway.LambdaIntegration(createMediaBatchFn));
+    mediaBatch.addResource("delete").addMethod("POST", new apigateway.LambdaIntegration(deleteMediaBatchFn));
     media.addMethod("GET", new apigateway.LambdaIntegration(listMediaFn));
     const mediaById = media.addResource("{id}");
     mediaById.addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFn));

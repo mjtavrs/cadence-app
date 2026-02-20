@@ -6,7 +6,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { UserIcon } from "lucide-react";
+import { UserIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { IoIosLock } from "react-icons/io";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -18,8 +19,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+const ACCEPT_AVATAR = "image/png,image/jpeg,image/webp,image/heic,image/heif";
 
 const profileFormSchema = z
   .object({
@@ -81,12 +90,15 @@ type MePayload = {
   avatar?: string | null;
 };
 
+
 export function ProfileModal(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loadingMe, setLoadingMe] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [initialValues, setInitialValues] = useState<InitialValues | null>(null);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [newPasswordFocused, setNewPasswordFocused] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -136,8 +148,10 @@ export function ProfileModal(props: { open: boolean; onOpenChange: (open: boolea
 
   function handleAvatarFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file?.type.startsWith("image/")) {
-      toast.error("Selecione uma imagem (JPEG, PNG, WEBP ou similar).");
+    if (!file) return;
+    const accepted = ["image/png", "image/jpeg", "image/webp", "image/heic", "image/heif"];
+    if (!accepted.includes(file.type)) {
+      toast.error("Selecione uma imagem (PNG, JPEG, WEBP ou HEIC).");
       return;
     }
     const url = URL.createObjectURL(file);
@@ -223,132 +237,191 @@ export function ProfileModal(props: { open: boolean; onOpenChange: (open: boolea
   const isSubmitting = form.formState.isSubmitting;
   const disabled = loadingMe || isSubmitting;
 
+  const sectionTitleClass = "text-base font-semibold mb-3";
+
+  const newPasswordRegister = form.register("newPassword");
+  const newPasswordFieldProps = {
+    ...newPasswordRegister,
+    onFocus: () => setNewPasswordFocused(true),
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      newPasswordRegister.onBlur(e);
+      setNewPasswordFocused(false);
+    },
+  };
+
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton={!disabled}>
-        <DialogHeader>
-          <DialogTitle>Seus dados</DialogTitle>
+        <DialogContent className="sm:max-w-xl" showCloseButton={!disabled}>
+        <DialogHeader className="pb-1">
+          <DialogTitle className="text-xl">Seus dados</DialogTitle>
         </DialogHeader>
-        <Separator />
 
         {loadingMe ? (
           <div className="text-muted-foreground py-6 text-center text-sm">
             Carregando...
           </div>
         ) : (
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-1">
+            <p className={sectionTitleClass}>Perfil</p>
+            <Separator />
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={ACCEPT_AVATAR}
               className="hidden"
               aria-hidden
               onChange={handleAvatarFileChange}
             />
 
-            <div className="flex flex-col items-center gap-4">
+            <div className="flex items-start gap-8">
+              <div className="flex shrink-0 flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
+                  disabled={disabled}
+                  className="rounded-full outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none size-24 shrink-0 sm:size-28"
+                >
+                  <Avatar className="size-full ring-2 ring-border">
+                    {avatarUrl ? (
+                      <AvatarImage src={avatarUrl} alt="Avatar" />
+                    ) : null}
+                    <AvatarFallback className="text-2xl sm:text-3xl">
+                      <UserIcon className="size-12 text-muted-foreground sm:size-14" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="sr-only">Escolher foto</span>
+                </button>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="text-sky-500 h-auto p-0 text-sm hover:text-sky-600"
+                  onClick={handleAvatarClick}
+                  disabled={disabled}
+                >
+                  Alterar imagem
+                </Button>
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="profile-name">Nome</Label>
+                  <Input
+                    id="profile-name"
+                    {...form.register("name")}
+                    placeholder="Seu nome"
+                    disabled={disabled}
+                  />
+                  {form.formState.errors.name?.message && (
+                    <p className="text-destructive text-sm">
+                      {form.formState.errors.name.message}
+                    </p>
+                  )}
+                </div>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="space-y-2 cursor-help">
+                      <Label htmlFor="profile-email">Email</Label>
+                      <div className="relative">
+                        <Input
+                          id="profile-email"
+                          type="email"
+                          {...form.register("email")}
+                          disabled
+                          className="bg-muted pr-10"
+                        />
+                        <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2">
+                          <IoIosLock className="size-5" />
+                        </span>
+                      </div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="start">
+                    O email não pode ser alterado aqui.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+
+            <div>
               <button
                 type="button"
-                onClick={handleAvatarClick}
-                disabled={disabled}
-                className="rounded-full outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none size-28 shrink-0 sm:size-32"
+                onClick={() => setSecurityOpen((o) => !o)}
+                className={`group flex w-full cursor-pointer items-center justify-between py-1 ${sectionTitleClass}`}
+                aria-expanded={securityOpen}
               >
-                <Avatar className="size-full ring-2 ring-border">
-                  {avatarUrl ? (
-                    <AvatarImage src={avatarUrl} alt="Avatar" />
-                  ) : null}
-                  <AvatarFallback className="text-3xl sm:text-4xl">
-                    <UserIcon className="size-14 text-muted-foreground sm:size-16" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="sr-only">Escolher foto</span>
+                Segurança
+                {securityOpen ? (
+                  <ChevronUp className="size-4 shrink-0" />
+                ) : (
+                  <ChevronDown className="size-4 shrink-0" />
+                )}
               </button>
-              <span className="text-muted-foreground text-xs">
-                Clique na foto para trocar (em breve: upload será salvo)
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="profile-name">Nome</Label>
-              <Input
-                id="profile-name"
-                {...form.register("name")}
-                placeholder="Seu nome"
-                disabled={disabled}
-              />
-              {form.formState.errors.name?.message && (
-                <p className="text-destructive text-sm">
-                  {form.formState.errors.name.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="profile-email">Email</Label>
-              <Input
-                id="profile-email"
-                type="email"
-                {...form.register("email")}
-                disabled
-                className="bg-muted"
-              />
-              <p className="text-muted-foreground text-xs">
-                O email não pode ser alterado aqui.
-              </p>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-3">
-              <h3 className="text-base font-semibold">Senha</h3>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="profile-current-password">Senha atual</Label>
-                  <Input
-                    id="profile-current-password"
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    disabled={disabled}
-                    {...form.register("currentPassword")}
-                  />
-                  {form.formState.errors.currentPassword?.message && (
-                    <p className="text-destructive text-sm">
-                      {form.formState.errors.currentPassword.message}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-new-password">Nova senha</Label>
-                  <Input
-                    id="profile-new-password"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="••••••••"
-                    disabled={disabled}
-                    {...form.register("newPassword")}
-                  />
-                  {form.formState.errors.newPassword?.message && (
-                    <p className="text-destructive text-sm">
-                      {form.formState.errors.newPassword.message}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-confirm-password">Confirmar nova senha</Label>
-                  <Input
-                    id="profile-confirm-password"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="••••••••"
-                    disabled={disabled}
-                    {...form.register("confirmNewPassword")}
-                  />
-                  {form.formState.errors.confirmNewPassword?.message && (
-                    <p className="text-destructive text-sm">
-                      {form.formState.errors.confirmNewPassword.message}
-                    </p>
-                  )}
+              <div
+                className="grid transition-[grid-template-rows] duration-200 ease-out"
+                style={{ gridTemplateRows: securityOpen ? "1fr" : "0fr" }}
+              >
+                <div className="min-h-0 overflow-hidden px-1 pb-1">
+                  <div className="space-y-3 pt-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-current-password">Senha atual</Label>
+                      <PasswordInput
+                        id="profile-current-password"
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                        disabled={disabled}
+                        {...form.register("currentPassword")}
+                      />
+                      {form.formState.errors.currentPassword?.message && (
+                        <p className="text-destructive text-sm">
+                          {form.formState.errors.currentPassword.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-new-password">Nova senha</Label>
+                      <PasswordInput
+                        id="profile-new-password"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        disabled={disabled}
+                        {...newPasswordFieldProps}
+                      />
+                      {form.formState.errors.newPassword?.message && (
+                        <p className="text-destructive text-sm">
+                          {form.formState.errors.newPassword.message}
+                        </p>
+                      )}
+                      <div
+                        className="grid transition-[grid-template-rows] duration-200 ease-out"
+                        style={{ gridTemplateRows: newPasswordFocused ? "1fr" : "0fr" }}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <ul className="text-muted-foreground mt-1.5 list-inside list-disc text-xs">
+                            <li>Mínimo 8 caracteres</li>
+                            <li>Pelo menos 1 letra minúscula</li>
+                            <li>Pelo menos 1 letra maiúscula</li>
+                            <li>Pelo menos 1 número</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-confirm-password">Confirmar nova senha</Label>
+                      <PasswordInput
+                        id="profile-confirm-password"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        disabled={disabled}
+                        {...form.register("confirmNewPassword")}
+                      />
+                      {form.formState.errors.confirmNewPassword?.message && (
+                        <p className="text-destructive text-sm">
+                          {form.formState.errors.confirmNewPassword.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

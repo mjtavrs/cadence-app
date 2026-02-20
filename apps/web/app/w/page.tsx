@@ -1,32 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
-
-type WorkspaceRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";
-
-type Workspace = {
-  id: string;
-  name: string;
-  role: WorkspaceRole;
-};
-
-type WorkspacesResponse = {
-  activeWorkspaceId: string | null;
-  workspaces: Workspace[];
-};
-
-function getErrorMessage(value: unknown) {
-  if (!value || typeof value !== "object") return null;
-  const v = value as Record<string, unknown>;
-  if (typeof v.message === "string") return v.message;
-  return null;
-}
+import { Page, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
+import { useWorkspaces } from "@/hooks/use-workspaces";
+import { WorkspaceSelectorContent } from "@/components/shell/workspace-selector-content";
 
 export default function WorkspaceSelectorPage() {
   const router = useRouter();
@@ -34,66 +14,18 @@ export default function WorkspaceSelectorPage() {
   const next = useMemo(() => searchParams.get("next") || "/app", [searchParams]);
   const auto = useMemo(() => searchParams.get("auto") === "1", [searchParams]);
 
-  const [data, setData] = useState<WorkspacesResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selecting, setSelecting] = useState<string | null>(null);
+  const { data, error, loading, selecting, select } = useWorkspaces();
 
   useEffect(() => {
+    if (!auto || !data?.activeWorkspaceId || loading) return;
     let cancelled = false;
-
-    async function run() {
-      setLoading(true);
-      setError(null);
-
-      const res = await fetch("/api/workspaces");
-      const payload = (await res.json().catch(() => null)) as unknown;
-      if (!res.ok) {
-        if (!cancelled) setError(getErrorMessage(payload) ?? "Falha ao carregar workspaces.");
-        if (!cancelled) setLoading(false);
-        return;
-      }
-
-      const value = payload as WorkspacesResponse;
-      if (!cancelled) setData(value);
-      if (!cancelled) setLoading(false);
-
-      if (auto && value.activeWorkspaceId) {
-        // Se já existe preferência (sincronizada), seleciona e segue.
-        await fetch("/api/workspaces/select", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ workspaceId: value.activeWorkspaceId }),
-        });
-        if (!cancelled) router.replace(next);
-      }
-    }
-
-    run();
+    select(data.activeWorkspaceId).then((ok) => {
+      if (!cancelled && ok) router.replace(next);
+    });
     return () => {
       cancelled = true;
     };
-  }, [auto, next, router]);
-
-  async function select(workspaceId: string) {
-    setSelecting(workspaceId);
-    setError(null);
-
-    const res = await fetch("/api/workspaces/select", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspaceId }),
-    });
-
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as unknown;
-      setError(getErrorMessage(payload) ?? "Falha ao selecionar workspace.");
-      setSelecting(null);
-      return;
-    }
-
-    router.replace(next);
-  }
+  }, [auto, data?.activeWorkspaceId, loading, next, router, select]);
 
   return (
     <div className="min-h-screen bg-background px-4 py-10">
@@ -107,40 +39,16 @@ export default function WorkspaceSelectorPage() {
               </PageHeaderText>
             </PageHeader>
 
-            {loading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            ) : error ? (
-              <p className="text-destructive text-sm">{error}</p>
-            ) : data?.workspaces?.length ? (
-              <PageActions className="flex flex-col items-stretch gap-3">
-                {data.workspaces.map((w) => (
-                  <Button
-                    key={w.id}
-                    variant="secondary"
-                    className="w-full justify-between"
-                    disabled={!!selecting}
-                    onClick={() => select(w.id)}
-                  >
-                    <span className="truncate">{w.name}</span>
-                    <span className="text-muted-foreground text-xs">
-                      {selecting === w.id ? "Selecionando..." : w.role}
-                    </span>
-                  </Button>
-                ))}
-              </PageActions>
-            ) : (
-              <p className="text-muted-foreground text-sm">Você ainda não possui acesso a nenhum workspace.</p>
-            )}
-
-            {error && !loading && <p className="text-destructive mt-4 text-sm">{error}</p>}
+            <WorkspaceSelectorContent
+              data={data}
+              error={error}
+              loading={loading}
+              selecting={selecting}
+              onSelect={(workspaceId) => select(workspaceId).then((ok) => ok && router.replace(next))}
+            />
           </Card>
         </Page>
       </div>
     </div>
   );
 }
-

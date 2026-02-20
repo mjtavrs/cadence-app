@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { XIcon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-
 function normalizeTag(raw: string) {
-  return raw.trim().toLowerCase();
+  return raw.replace(/^#/, "").trim().toLowerCase();
 }
 
 export function TagsInput(props: {
@@ -17,6 +13,7 @@ export function TagsInput(props: {
   placeholder?: string;
 }) {
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   function addFromText(text: string) {
     const parts = text.split(",");
@@ -27,46 +24,64 @@ export function TagsInput(props: {
       if (next.includes(t)) continue;
       next.push(t);
     }
-    props.onChange(next);
+    if (next.length !== props.value.length) {
+      props.onChange(next);
+    }
   }
 
   function remove(tag: string) {
     props.onChange(props.value.filter((t) => t !== tag));
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addFromText(draft);
+      setDraft("");
+    }
+    if (e.key === "Backspace" && !draft && props.value.length > 0) {
+      remove(props.value[props.value.length - 1]);
+    }
+  }
+
   return (
-    <div className="space-y-2">
-      <Input
-        placeholder={props.placeholder ?? "Tags (separe por vírgula)"}
+    <div
+      className="border-input bg-background ring-ring/10 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors focus-within:ring-2 focus-within:ring-ring"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {props.value.map((t) => (
+        <span
+          key={t}
+          className="bg-muted text-foreground inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm"
+        >
+          {t}
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground ml-0.5 inline-flex items-center"
+            onClick={(e) => {
+              e.stopPropagation();
+              remove(t);
+            }}
+            aria-label={`Remover ${t}`}
+          >
+            <XIcon className="size-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        type="text"
+        className="placeholder:text-muted-foreground min-w-[80px] flex-1 border-0 bg-transparent p-0 text-sm outline-none"
+        placeholder={props.value.length === 0 ? (props.placeholder ?? "Tags (separe por vírgula)") : ""}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            addFromText(draft);
-            setDraft("");
-          }
-        }}
+        onKeyDown={handleKeyDown}
         onBlur={() => {
           if (!draft.trim()) return;
           addFromText(draft);
           setDraft("");
         }}
       />
-
-      {props.value.length ? (
-        <div className="flex flex-wrap gap-2">
-          {props.value.map((t) => (
-            <Badge key={t} variant="outline" className="gap-1">
-              <span>#{t}</span>
-              <Button type="button" size="icon-xs" variant="ghost" onClick={() => remove(t)} aria-label={`Remover ${t}`}>
-                <XIcon className="h-3 w-3" />
-              </Button>
-            </Badge>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
-

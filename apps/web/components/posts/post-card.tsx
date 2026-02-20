@@ -11,6 +11,7 @@ import { FaInstagram } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,8 +78,10 @@ export function PostCard(props: {
 
   const statusAction = getStatusAction();
 
+  const isDraft = p.status === "DRAFT";
+
   return (
-    <Card className="p-4">
+    <Card className={cn("p-4", isDraft && "border-dashed bg-muted/30")}>
       <div className="flex flex-col gap-4">
         {/* Topo: Título + Status + Data */}
         <div className="flex items-start justify-between gap-3">

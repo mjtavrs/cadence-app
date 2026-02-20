@@ -26,6 +26,8 @@ type Body = {
   aspectRatio?: string;
   cropX?: number;
   cropY?: number;
+  saveAsDraft?: boolean;
+  directSchedule?: boolean;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -46,21 +48,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const tags = normalizeTags(body.tags);
   const rawScheduled = body.scheduledAtUtc?.trim();
   const rawAspectRatio = body.aspectRatio?.trim();
+  const saveAsDraft = body.saveAsDraft === true;
+  const directSchedule = body.directSchedule === true;
 
   const validAspectRatios = new Set(["original", "1:1", "4:5", "16:9"]);
   const aspectRatio = rawAspectRatio && validAspectRatios.has(rawAspectRatio) ? rawAspectRatio : "1:1";
   
-  // Validar e normalizar coordenadas de crop (0-1, padrão 0.5 = centro)
-  // IMPORTANTE: 0 é um valor válido, então precisamos verificar explicitamente se é number e está no range
   const rawCropX = body.cropX;
   const rawCropY = body.cropY;
   const cropX = typeof rawCropX === "number" && !Number.isNaN(rawCropX) && rawCropX >= 0 && rawCropX <= 1 ? rawCropX : 0.5;
   const cropY = typeof rawCropY === "number" && !Number.isNaN(rawCropY) && rawCropY >= 0 && rawCropY <= 1 ? rawCropY : 0.5;
 
   if (!workspaceId) return badRequest("workspaceId é obrigatório.");
-  if (!title) return badRequest("Título é obrigatório.");
-  if (!caption) return badRequest("Legenda não pode estar vazia.");
   if (!isValidSingleMedia(mediaIds)) return badRequest("No MVP, o post deve conter exatamente 1 mídia.");
+
+  if (!saveAsDraft) {
+    if (!title) return badRequest("Título é obrigatório.");
+    if (!caption) return badRequest("Legenda não pode estar vazia.");
+  }
 
   const titleErr = validateTitle(title);
   if (titleErr) return badRequest(titleErr);
@@ -96,6 +101,15 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const pk = `WORKSPACE#${workspaceId}`;
 
+    let postStatus = "DRAFT";
+    if (!saveAsDraft && scheduledAtUtc) {
+      if (directSchedule && membership.role === "OWNER") {
+        postStatus = "SCHEDULED";
+      } else if (membership.role !== "OWNER") {
+        postStatus = "IN_REVIEW";
+      }
+    }
+
     for (let attempt = 0; attempt < 8; attempt++) {
       const shortCode = newPostShortCode(6);
       try {
@@ -113,7 +127,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                     title,
                     shortCode,
                     tags,
-                    status: "DRAFT",
+                    status: postStatus,
                     caption,
                     mediaIds,
                     aspectRatio,

@@ -192,6 +192,12 @@
   z-index: 1;
 }
 
+/* Esconde o botão nativo de mostrar/ocultar senha dos inputs type="password" (Edge e navegadores que usam ::-ms-reveal) */
+.hide-password-browser-toggle::-ms-reveal,
+.hide-password-browser-toggle::-ms-clear {
+  display: none !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
