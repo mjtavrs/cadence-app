@@ -6,6 +6,41 @@
 
 ---
 
+## 0) Addendum de escopo fechado (21/02/2026)
+
+Este addendum prevalece sobre pontos antigos deste documento quando houver conflito.
+
+### Decisoes de produto fechadas
+1. MVP fase 1 sera entregue sem integracao Instagram.
+2. MVP fase 1 suporta somente imagem unica por post.
+3. Video e carrossel ficam para fase 2 (pos-MVP).
+4. Regras de permissao no MVP:
+   - `OWNER/ADMIN`: podem aprovar e agendar diretamente.
+   - `EDITOR`: cria/edita e envia para aprovacao.
+   - `VIEWER`: somente leitura.
+
+### Regra de UX fechada para evitar falsa expectativa
+1. Para `EDITOR`, o CTA principal deve ser `Enviar para aprovacao` (nao `Agendar post`).
+2. Para `OWNER/ADMIN`, o CTA principal permanece `Agendar post`.
+3. Sempre mostrar feedback explicito de resultado:
+   - `Aguardando aprovacao` para itens que nao estao realmente agendados.
+   - Mensagem de `Post agendado` somente quando status efetivo for `SCHEDULED`.
+
+### Escopo congelado da fase 1 (nao entra)
+1. Integracao Instagram (OAuth, tokens, publish real).
+2. Publicacao automatica em producao via dispatcher real.
+3. Video e carrossel no fluxo de postagem.
+4. Refactors estruturais amplos sem impacto direto no fluxo principal.
+
+### Definition of Done da fase 1
+1. Fluxo por papel sem ambiguidade de UX:
+   - `EDITOR`: envia para aprovacao.
+   - `OWNER/ADMIN`: aprova/agendam.
+2. Fluxo de posts funcional de ponta a ponta:
+   - criar -> revisar -> aprovar -> agendar -> cancelar/reverter.
+3. Retry manual para `FAILED` implementado e acessivel na UI.
+4. Documentacao alinhada ao comportamento implementado.
+
 ## 1) Escopo do MVP (features)
 
 ### ✅ Incluído no MVP
@@ -385,4 +420,3 @@ Campos:
 - Implementar base do Next (shell + login + middleware + BFF)
 - Criar os contratos TypeScript (DTOs) e mocks do backend
 - Montar telas: Posts + Media + Calendar com dados mockados, depois plugar API real
-

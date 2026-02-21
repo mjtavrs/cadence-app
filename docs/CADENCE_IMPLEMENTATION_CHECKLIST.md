@@ -2,6 +2,41 @@
 
 Este documento transforma o `CADENCE_MVP.md` em um checklist executavel (ordem sugerida) para implementar o MVP.
 
+## Addendum de escopo fechado (21/02/2026)
+
+Este addendum prevalece sobre itens antigos deste documento quando houver conflito.
+
+### Escopo da fase 1 (agora)
+1. Sem integracao Instagram.
+2. Sem video e sem carrossel.
+3. Somente imagem unica por post.
+4. Prioridade: fluxo principal de posts com UX clara por papel.
+
+### Regras de permissao e UX (fase 1)
+1. `OWNER/ADMIN`: aprovar e agendar diretamente.
+2. `EDITOR`: enviar para aprovacao (nao agendar direto).
+3. `VIEWER`: somente leitura.
+4. CTA por papel:
+   - `EDITOR`: `Enviar para aprovacao`.
+   - `OWNER/ADMIN`: `Agendar post`.
+5. Nunca comunicar "agendado" para status que ainda depende de aprovacao.
+
+### Escopo congelado (nao entra na fase 1)
+1. Integracao Instagram (status/connect/callback e publish real).
+2. Publicacao automatica real via dispatcher em producao.
+3. Video unico e carrossel misto.
+4. Melhorias arquiteturais amplas fora do fluxo principal.
+
+### Definition of Done da fase 1
+1. Fluxo por papel sem ambiguidade:
+   - `EDITOR`: envia para aprovacao.
+   - `OWNER/ADMIN`: aprova/agendam.
+2. Fluxo de posts funcional:
+   - criar -> revisar -> aprovar -> agendar -> cancelar/reverter.
+3. `POST /posts/{id}/retry` implementado (backend + BFF + UI).
+4. Mensagens e badges coerentes com estado real (`Aguardando aprovacao` vs `Agendado`).
+5. Documentacao e checklist atualizados.
+
 ## Decisoes Fechadas
 
 - Armazenar `scheduled_at` em UTC e exibir/editar no fuso do workspace (`workspace.timezone`).
