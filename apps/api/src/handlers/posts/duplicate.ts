@@ -1,38 +1,43 @@
 import type { APIGatewayProxyHandler } from "aws-lambda";
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { canManageApproval, canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
+import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 import { newPostId, newPostShortCode } from "../../posts/ids";
-import { normalizeTags, normalizeTitle, validateTags, validateTitle } from "../../posts/metadata";
 import {
   computeMonthBucketRecife,
   computeWeekBucketRecife,
-  isValidSingleMedia,
   isAlignedToMinutes,
-  normalizeCaption,
   parseUtcIso,
 } from "../../posts/schedule";
-import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
 type Body = {
-  workspaceId?: string;
+  scheduledAtUtc?: string;
+};
+
+type PostRecord = {
+  postId: string;
   title?: string;
   caption?: string;
+  tags?: string[];
   mediaIds?: string[];
-  tags?: string[] | string;
-  scheduledAtUtc?: string;
-  aspectRatio?: string;
+  aspectRatio?: "original" | "1:1" | "4:5" | "16:9";
   cropX?: number;
   cropY?: number;
-  saveAsDraft?: boolean;
-  directSchedule?: boolean;
 };
+
+const VALID_ASPECTS = new Set(["original", "1:1", "4:5", "16:9"]);
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
   if (!token) return unauthorized("Token ausente.");
+
+  const sourcePostId = event.pathParameters?.id?.trim();
+  const workspaceId = event.queryStringParameters?.workspaceId?.trim();
+  if (!workspaceId) return badRequest("workspaceId é obrigatório.");
+  if (!sourcePostId) return badRequest("id é obrigatório.");
 
   let body: Body = {};
   try {
@@ -41,37 +46,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     return badRequest("Body inválido (JSON).");
   }
 
-  const workspaceId = body.workspaceId?.trim();
-  const title = normalizeTitle(body.title);
-  const caption = normalizeCaption(body.caption ?? "");
-  const mediaIds = body.mediaIds ?? [];
-  const tags = normalizeTags(body.tags);
   const rawScheduled = body.scheduledAtUtc?.trim();
-  const rawAspectRatio = body.aspectRatio?.trim();
-  const saveAsDraft = body.saveAsDraft === true;
-  const directSchedule = body.directSchedule === true;
-
-  const validAspectRatios = new Set(["original", "1:1", "4:5", "16:9"]);
-  const aspectRatio = rawAspectRatio && validAspectRatios.has(rawAspectRatio) ? rawAspectRatio : "1:1";
-  
-  const rawCropX = body.cropX;
-  const rawCropY = body.cropY;
-  const cropX = typeof rawCropX === "number" && !Number.isNaN(rawCropX) && rawCropX >= 0 && rawCropX <= 1 ? rawCropX : 0.5;
-  const cropY = typeof rawCropY === "number" && !Number.isNaN(rawCropY) && rawCropY >= 0 && rawCropY <= 1 ? rawCropY : 0.5;
-
-  if (!workspaceId) return badRequest("workspaceId é obrigatório.");
-  if (!isValidSingleMedia(mediaIds)) return badRequest("No MVP, o post deve conter exatamente 1 mídia.");
-
-  if (!saveAsDraft) {
-    if (!title) return badRequest("Título é obrigatório.");
-    if (!caption) return badRequest("Legenda não pode estar vazia.");
-  }
-
-  const titleErr = validateTitle(title);
-  if (titleErr) return badRequest(titleErr);
-  const tagsErr = validateTags(tags);
-  if (tagsErr) return badRequest(tagsErr);
-
   let scheduledAtUtc: string | null = null;
   let weekBucket: string | null = null;
   let monthBucket: string | null = null;
@@ -79,8 +54,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     scheduledAtUtc = parseUtcIso(rawScheduled);
     if (!scheduledAtUtc) return badRequest("scheduledAtUtc inválido.");
     if (!isAlignedToMinutes(scheduledAtUtc, 15)) return badRequest("Agendamento deve ser de 15 em 15 minutos.");
-    const now = new Date().toISOString();
-    if (scheduledAtUtc <= now) return badRequest("Agendamento deve ser no futuro.");
+    if (scheduledAtUtc <= new Date().toISOString()) return badRequest("Agendamento deve ser no futuro.");
     weekBucket = computeWeekBucketRecife(scheduledAtUtc);
     monthBucket = computeMonthBucketRecife(scheduledAtUtc);
   }
@@ -91,24 +65,37 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const membership = await assertWorkspaceMembership({ userId, workspaceId });
     if (!membership) return unauthorized("Sem acesso ao workspace.");
-    if (!canWrite(membership.role)) return unauthorized("Sem permissão para criar posts.");
+    if (!canWrite(membership.role)) return unauthorized("Sem permissão para duplicar posts.");
 
     const ddb = getDocClient();
     const tableName = getTableName();
+    const sourceKey = { PK: `WORKSPACE#${workspaceId}`, SK: `POST#${sourcePostId}` };
+    const sourceRes = await ddb.send(new GetCommand({ TableName: tableName, Key: sourceKey }));
+    const source = sourceRes.Item as PostRecord | undefined;
+    if (!source) return badRequest("Post não encontrado.");
+
+    const sourceMediaIds = Array.isArray(source.mediaIds) ? source.mediaIds : [];
+    if (sourceMediaIds.length !== 1) {
+      return badRequest("No MVP, o post de origem precisa conter exatamente 1 mídia.");
+    }
 
     const postId = newPostId();
     const now = new Date().toISOString();
-
     const pk = `WORKSPACE#${workspaceId}`;
 
-    let postStatus = "DRAFT";
-    if (!saveAsDraft && scheduledAtUtc) {
-      if (directSchedule && canManageApproval(membership.role)) {
-        postStatus = "SCHEDULED";
-      } else if (!canManageApproval(membership.role)) {
-        postStatus = "IN_REVIEW";
-      }
-    }
+    const status = scheduledAtUtc
+      ? canManageApproval(membership.role)
+        ? "SCHEDULED"
+        : "IN_REVIEW"
+      : "DRAFT";
+
+    const rawAspect = source.aspectRatio;
+    const aspectRatio =
+      typeof rawAspect === "string" && VALID_ASPECTS.has(rawAspect) ? rawAspect : "1:1";
+    const cropX =
+      typeof source.cropX === "number" && source.cropX >= 0 && source.cropX <= 1 ? source.cropX : 0.5;
+    const cropY =
+      typeof source.cropY === "number" && source.cropY >= 0 && source.cropY <= 1 ? source.cropY : 0.5;
 
     for (let attempt = 0; attempt < 8; attempt++) {
       const shortCode = newPostShortCode(6);
@@ -124,12 +111,12 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                     SK: `POST#${postId}`,
                     postId,
                     workspaceId,
-                    title,
+                    title: source.title ?? "",
                     shortCode,
-                    tags,
-                    status: postStatus,
-                    caption,
-                    mediaIds,
+                    tags: Array.isArray(source.tags) ? source.tags : [],
+                    status,
+                    caption: source.caption ?? "",
+                    mediaIds: sourceMediaIds,
                     aspectRatio,
                     cropX,
                     cropY,
@@ -146,6 +133,12 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                           GSI2SK: `${scheduledAtUtc}#POST#${postId}`,
                           GSI4PK: `WORKSPACE#${workspaceId}#MONTH#${monthBucket}`,
                           GSI4SK: `${scheduledAtUtc}#POST#${postId}`,
+                          ...(status === "SCHEDULED"
+                            ? {
+                                GSI3PK: "DISPATCH",
+                                GSI3SK: `${scheduledAtUtc}#WORKSPACE#${workspaceId}#POST#${postId}`,
+                              }
+                            : {}),
                         }
                       : {}),
                   },
@@ -170,10 +163,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           }),
         );
 
-        return json(201, { id: postId, shortCode });
+        return json(201, { postId, shortCode, status, scheduledAtUtc });
       } catch (err: any) {
-        const name = err?.name as string | undefined;
-        if (name === "TransactionCanceledException") {
+        if (err?.name === "TransactionCanceledException") {
           if (attempt < 7) continue;
           return serverError("Não foi possível gerar um código único para o post agora.");
         }
@@ -181,10 +173,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
     }
 
-    return serverError("Não foi possível criar o post agora.");
+    return serverError("Não foi possível duplicar o post agora.");
   } catch (err: any) {
-    const name = err?.name as string | undefined;
-    if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");
-    return serverError("Não foi possível criar o post agora.");
+    if (err?.name === "NotAuthorizedException") {
+      return unauthorized("Sessão expirada. Faça login novamente.");
+    }
+    return serverError("Não foi possível duplicar o post agora.");
   }
 };

@@ -258,8 +258,18 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const retryPostFn = new NodejsFunction(this, "RetryPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/retry.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const deletePostFn = new NodejsFunction(this, "DeletePostFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/delete.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const duplicatePostFn = new NodejsFunction(this, "DuplicatePostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/duplicate.ts"),
       ...apiHandlerDefaults,
     });
 
@@ -297,7 +307,9 @@ export class CadenceStack extends Stack {
       approvePostFn,
       schedulePostFn,
       cancelPostFn,
+      retryPostFn,
       deletePostFn,
+      duplicatePostFn,
       revertToDraftPostFn,
       resolvePostCodeFn,
     ]) {
@@ -330,7 +342,9 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(approvePostFn);
     appTable.grantReadWriteData(schedulePostFn);
     appTable.grantReadWriteData(cancelPostFn);
+    appTable.grantReadWriteData(retryPostFn);
     appTable.grantReadWriteData(deletePostFn);
+    appTable.grantReadWriteData(duplicatePostFn);
     appTable.grantReadWriteData(revertToDraftPostFn);
     appTable.grantReadWriteData(resolvePostCodeFn);
 
@@ -392,10 +406,12 @@ export class CadenceStack extends Stack {
     postById.addMethod("GET", new apigateway.LambdaIntegration(getPostFn));
     postById.addMethod("PUT", new apigateway.LambdaIntegration(updatePostFn));
     postById.addMethod("DELETE", new apigateway.LambdaIntegration(deletePostFn));
+    postById.addResource("duplicate").addMethod("POST", new apigateway.LambdaIntegration(duplicatePostFn));
     postById.addResource("submit").addMethod("POST", new apigateway.LambdaIntegration(submitPostFn));
     postById.addResource("approve").addMethod("POST", new apigateway.LambdaIntegration(approvePostFn));
     postById.addResource("schedule").addMethod("POST", new apigateway.LambdaIntegration(schedulePostFn));
     postById.addResource("cancel").addMethod("POST", new apigateway.LambdaIntegration(cancelPostFn));
+    postById.addResource("retry").addMethod("POST", new apigateway.LambdaIntegration(retryPostFn));
     postById.addResource("revert-to-draft").addMethod("POST", new apigateway.LambdaIntegration(revertToDraftPostFn));
 
     new CfnOutput(this, "Stage", { value: props.stage });

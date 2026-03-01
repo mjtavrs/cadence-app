@@ -1,16 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { HelpCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { TagsInput } from "@/components/posts/tags-input";
+import { EmojiPicker } from "@/components/ui/emoji-picker";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
+import { PostPreviewCrop, type CropData, type PreviewAspectRatio } from "@/components/posts/post-preview-crop";
+import { getCalendarDateAndTimeFromUtcRecife, getNextQuarterSlotInTimeZone, formatRecifeDateTimeShort } from "@/lib/datetime";
+
+const CAPTION_LIMIT = 2200;
+
+type MediaListResponse = { items: MediaItem[] };
+type PresignResponse = { mediaId: string; s3Key: string; uploadUrl: string };
 
 export type MediaItem = {
   id: string;
@@ -29,35 +45,185 @@ export type EditablePost = {
   caption: string;
   mediaIds: string[];
   status: string;
+  scheduledAtUtc?: string;
+  aspectRatio?: "original" | "1:1" | "4:5" | "16:9";
+  cropX?: number;
+  cropY?: number;
 };
+
+function getErrorMessage(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.message === "string") return v.message;
+  return null;
+}
 
 function normalizeTitle(raw: string) {
   return raw.replace(/\s+/g, " ").trim();
 }
 
-function normalizeCaption(raw: string) {
-  return raw.replace(/\s+/g, " ").trim();
+function isAspectRatio(value: string | undefined): value is PreviewAspectRatio {
+  return value === "original" || value === "1:1" || value === "4:5" || value === "16:9";
+}
+
+function clampCrop(value: number | undefined) {
+  if (typeof value !== "number" || Number.isNaN(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+function FieldHelper(props: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="text-muted-foreground hover:text-foreground inline-flex" aria-label="Ajuda">
+          <HelpCircle className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs text-balance">
+        {props.text}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function EditPostClient(props: { initialPost: EditablePost; initialMedia: MediaItem[] }) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const initialAspect = isAspectRatio(props.initialPost.aspectRatio) ? props.initialPost.aspectRatio : "1:1";
+  const initialScheduledAt = props.initialPost.scheduledAtUtc ?? null;
 
   const [title, setTitle] = useState(props.initialPost.title ?? "");
   const [caption, setCaption] = useState(props.initialPost.caption ?? "");
   const [tags, setTags] = useState<string[]>(props.initialPost.tags ?? []);
+  const [media, setMedia] = useState<MediaItem[]>(props.initialMedia);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(props.initialPost.mediaIds?.[0] ?? null);
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
+  const [pickedMediaId, setPickedMediaId] = useState<string | null>(null);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduledAtUtc, setScheduledAtUtc] = useState<string | null>(initialScheduledAt);
+  const [aspectRatio, setAspectRatio] = useState<PreviewAspectRatio>(initialAspect);
+  const [cropData, setCropData] = useState<CropData | null>({
+    aspectRatio: initialAspect,
+    cropX: clampCrop(props.initialPost.cropX),
+    cropY: clampCrop(props.initialPost.cropY),
+  });
   const [saving, setSaving] = useState(false);
+  const [uploadPending, setUploadPending] = useState(false);
+
+  const selectedMedia = useMemo(
+    () => media.find((m) => m.id === selectedMediaId) ?? null,
+    [media, selectedMediaId],
+  );
+
+  const scheduleDefault = useMemo(() => {
+    if (scheduledAtUtc) {
+      const scheduled = getCalendarDateAndTimeFromUtcRecife(scheduledAtUtc, "America/Recife");
+      if (scheduled) return scheduled;
+    }
+    return getNextQuarterSlotInTimeZone(new Date(), "America/Recife");
+  }, [scheduledAtUtc]);
 
   const normalizedTitle = useMemo(() => normalizeTitle(title), [title]);
-  const normalizedCaption = useMemo(() => normalizeCaption(caption), [caption]);
+  const captionLength = caption.length;
+  const canScheduleOnSave = useMemo(
+    () => ["DRAFT", "IN_REVIEW", "APPROVED", "SCHEDULED"].includes(props.initialPost.status),
+    [props.initialPost.status],
+  );
+
+  async function reloadMedia() {
+    const res = await fetch("/api/media", { cache: "no-store" });
+    const payload = (await res.json().catch(() => null)) as unknown;
+    if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar mídias.");
+    const items = ((payload as MediaListResponse | null)?.items ?? []) as MediaItem[];
+    setMedia(items);
+    return items;
+  }
+
+  async function uploadFromDevice(file: File) {
+    setUploadPending(true);
+    try {
+      const presignRes = await fetch("/api/media/presign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contentType: file.type, fileName: file.name, sizeBytes: file.size }),
+      });
+      const presignPayload = (await presignRes.json().catch(() => null)) as unknown;
+      if (!presignRes.ok) throw new Error(getErrorMessage(presignPayload) ?? "Falha ao preparar upload.");
+      const presign = presignPayload as PresignResponse;
+
+      const uploadRes = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "content-type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Falha no upload da imagem.");
+
+      const createRes = await fetch("/api/media", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mediaId: presign.mediaId,
+          s3Key: presign.s3Key,
+          contentType: file.type,
+          sizeBytes: file.size,
+          fileName: file.name,
+        }),
+      });
+      const createPayload = (await createRes.json().catch(() => null)) as unknown;
+      if (!createRes.ok) throw new Error(getErrorMessage(createPayload) ?? "Falha ao registrar mídia.");
+
+      await reloadMedia();
+      setSelectedMediaId(presign.mediaId);
+      toast.success("Imagem enviada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao enviar imagem.");
+    } finally {
+      setUploadPending(false);
+    }
+  }
+
+  function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione um arquivo de imagem.");
+      return;
+    }
+    void uploadFromDevice(file);
+  }
+
+  function openLibraryDialog() {
+    setPickedMediaId(selectedMediaId);
+    setLibraryDialogOpen(true);
+  }
+
+  async function confirmLibraryPick() {
+    if (!pickedMediaId) return;
+    setSelectedMediaId(pickedMediaId);
+    setLibraryDialogOpen(false);
+
+    if (!media.some((m) => m.id === pickedMediaId)) {
+      try {
+        await reloadMedia();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Falha ao atualizar biblioteca.");
+      }
+    }
+  }
 
   async function save() {
     if (!normalizedTitle) {
       toast.error("O título não pode estar vazio.");
       return;
     }
-    if (!normalizedCaption) {
+    if (!caption.trim()) {
       toast.error("A legenda não pode estar vazia.");
+      return;
+    }
+    if (captionLength > CAPTION_LIMIT) {
+      toast.error(`A legenda deve ter no máximo ${CAPTION_LIMIT} caracteres.`);
       return;
     }
     if (!selectedMediaId) {
@@ -72,16 +238,30 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title: normalizedTitle,
-          caption: normalizedCaption,
+          caption,
           tags,
           mediaIds: [selectedMediaId],
+          aspectRatio,
+          cropX: typeof cropData?.cropX === "number" ? cropData.cropX : 0.5,
+          cropY: typeof cropData?.cropY === "number" ? cropData.cropY : 0.5,
         }),
       });
 
       const payload = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) {
-        const v = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
-        throw new Error(typeof v?.message === "string" ? v.message : "Falha ao salvar post.");
+        throw new Error(getErrorMessage(payload) ?? "Falha ao salvar post.");
+      }
+
+      if (scheduledAtUtc && canScheduleOnSave) {
+        const scheduleRes = await fetch(`/api/posts/${encodeURIComponent(props.initialPost.postId)}/schedule`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ scheduledAtUtc }),
+        });
+        const schedulePayload = (await scheduleRes.json().catch(() => null)) as unknown;
+        if (!scheduleRes.ok) {
+          throw new Error(getErrorMessage(schedulePayload) ?? "Falha ao atualizar agendamento.");
+        }
       }
 
       toast.success("Post atualizado.");
@@ -95,6 +275,15 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
 
   return (
     <Page>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        aria-hidden
+        onChange={onFileSelected}
+      />
+
       <PageHeader>
         <PageHeaderText>
           <PageTitle>Editar post</PageTitle>
@@ -106,59 +295,188 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
           <Button variant="secondary" asChild>
             <Link href="/app/posts">Voltar</Link>
           </Button>
-          <Button disabled={saving} onClick={() => void save()}>
+          <Button disabled={saving || uploadPending} onClick={() => void save()}>
             {saving ? "Salvando..." : "Salvar"}
           </Button>
         </PageActions>
       </PageHeader>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="p-4">
-          <div className="space-y-3">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-medium">Imagem do post</div>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" size="sm" disabled={uploadPending} onClick={() => fileInputRef.current?.click()}>
+                  {uploadPending ? "Enviando..." : "Enviar imagem"}
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={openLibraryDialog}>
+                  Biblioteca
+                </Button>
+              </div>
+            </div>
+
+            <PostPreviewCrop
+              imageSrc={selectedMedia?.url ?? null}
+              imageAlt={selectedMedia?.fileName ?? "Mídia selecionada"}
+              aspectRatio={aspectRatio}
+              onAspectRatioChange={(value) => {
+                setAspectRatio(value);
+                setCropData((prev) => ({
+                  aspectRatio: value,
+                  cropX: prev?.cropX ?? 0.5,
+                  cropY: prev?.cropY ?? 0.5,
+                }));
+              }}
+              onCropChange={setCropData}
+              emptyPlaceholder="Selecione uma imagem"
+              isLoading={uploadPending}
+            />
+          </div>
+        </Card>
+
+        <Card className="h-fit p-4">
+          <div className="space-y-5">
+            <Alert className="border-amber-300/70 bg-amber-50 text-amber-900 [&>svg]:text-amber-700">
+              <AlertTitle>No MVP, cada post aceita 1 imagem.</AlertTitle>
+              <AlertDescription className="text-amber-800">Vídeo e carrossel entram na próxima fase.</AlertDescription>
+            </Alert>
+
             <div className="space-y-2">
-              <div className="text-sm font-medium">Título</div>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium">Título</span>
+                <FieldHelper text="Essas informações são para organização interna do workspace e não interferem no seu post." />
+              </div>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Post do Dia das Mães" />
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Tags</div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium">Tags</span>
+                <FieldHelper text="Essas informações são para organização interna do workspace e não interferem no seu post." />
+              </div>
               <TagsInput value={tags} onChange={setTags} />
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Legenda</div>
-              <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={6} />
-              <div className="text-muted-foreground text-xs">
-                {normalizedCaption.length ? `${normalizedCaption.length} caractere(s)` : "Vazio"}
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium">Legenda</span>
+                <FieldHelper text="Essa legenda será incluída no seu post." />
+              </div>
+              <Textarea
+                value={caption}
+                onChange={(e) => {
+                  if (e.target.value.length <= CAPTION_LIMIT) {
+                    setCaption(e.target.value);
+                  }
+                }}
+                rows={12}
+                placeholder="Escreva a legenda do seu post..."
+              />
+              <div className="flex items-center justify-between">
+                <EmojiPicker
+                  onSelect={(emoji) => {
+                    const next = `${caption}${emoji}`;
+                    if (next.length <= CAPTION_LIMIT) setCaption(next);
+                  }}
+                />
+                <span className="text-muted-foreground text-xs tabular-nums">
+                  {captionLength}/{CAPTION_LIMIT}
+                </span>
               </div>
             </div>
+
+            <div className="space-y-2 pt-1">
+              <div className="text-sm font-medium">Data e hora da publicação</div>
+              {canScheduleOnSave ? (
+                scheduledAtUtc ? (
+                  <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">{formatRecifeDateTimeShort(scheduledAtUtc)}</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setScheduleModalOpen(true)}>
+                      Alterar
+                    </Button>
+                  </div>
+                ) : (
+                  <Button type="button" variant="outline" className="w-full" onClick={() => setScheduleModalOpen(true)}>
+                    Definir data e hora
+                  </Button>
+                )
+              ) : (
+                <div className="text-muted-foreground rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  Agendamento indisponível para o status atual.
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            <Button className="w-full" disabled={saving || uploadPending} onClick={() => void save()}>
+              {saving ? "Salvando..." : "Salvar alterações"}
+            </Button>
           </div>
         </Card>
-
-        <Card className="p-4">
-          <div className="text-sm font-medium">Imagem</div>
-          {props.initialMedia.length === 0 ? (
-            <p className="text-muted-foreground mt-2 text-sm">Nenhuma mídia disponível.</p>
-          ) : (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {props.initialMedia.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={`relative aspect-square overflow-hidden rounded border ${
-                    selectedMediaId === m.id ? "border-primary" : "border-border"
-                  }`}
-                  onClick={() => setSelectedMediaId(m.id)}
-                  title={m.fileName ?? m.id}
-                >
-                  <img src={m.url} alt={m.fileName ?? "mídia"} className="h-full w-full object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-        </Card>
       </div>
+
+      <Dialog open={libraryDialogOpen} onOpenChange={setLibraryDialogOpen}>
+        <DialogContent className="sm:max-w-2xl" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Biblioteca de mídia</DialogTitle>
+          </DialogHeader>
+
+          <ScrollArea className="h-[60vh] pr-4">
+            {media.length === 0 ? (
+              <p className="text-muted-foreground py-4 text-sm">Nenhuma mídia disponível. Envie arquivos em Mídia.</p>
+            ) : (
+              <div className="grid grid-cols-4 gap-3 py-2">
+                {media.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={
+                      `relative aspect-square overflow-hidden rounded-lg border-2 transition-colors ${
+                        pickedMediaId === m.id
+                          ? "border-primary ring-2 ring-primary/30"
+                          : "border-border hover:border-muted-foreground/50"
+                      }`
+                    }
+                    onClick={() => setPickedMediaId(m.id)}
+                    title={m.fileName ?? m.id}
+                  >
+                    <img src={m.url} alt={m.fileName ?? "mídia"} className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLibraryDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void confirmLibraryPick()} disabled={!pickedMediaId}>
+              Usar mídia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <SchedulePostDialog
+        open={scheduleModalOpen}
+        onOpenChange={setScheduleModalOpen}
+        postId={null}
+        defaultDate={scheduleDefault.dateForCalendar}
+        defaultTimeHHmm={scheduleDefault.time}
+        onSelectScheduledAtUtc={setScheduledAtUtc}
+      />
+
+      {uploadPending ? (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-50 rounded-md border bg-background/95 px-3 py-2 text-sm shadow">
+          <div className="flex items-center gap-2">
+            <Spinner className="size-4" />
+            <span>Enviando imagem...</span>
+          </div>
+        </div>
+      ) : null}
     </Page>
   );
 }
-

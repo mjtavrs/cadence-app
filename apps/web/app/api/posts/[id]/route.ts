@@ -26,6 +26,9 @@ type UpdateBody = {
   caption?: string;
   mediaIds?: string[];
   tags?: string[];
+  aspectRatio?: string;
+  cropX?: number;
+  cropY?: number;
 };
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -36,7 +39,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
 
   const body = (await req.json().catch(() => null)) as UpdateBody | null;
-  if (!body?.caption || !body.mediaIds) {
+  if (!body || typeof body.caption !== "string" || !body.mediaIds) {
     return NextResponse.json({ message: "Parâmetros inválidos." }, { status: 400 });
   }
 
@@ -51,6 +54,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
       caption: body.caption,
       mediaIds: body.mediaIds,
       tags: body.tags ?? [],
+      aspectRatio: body.aspectRatio,
+      cropX: body.cropX,
+      cropY: body.cropY,
     }),
   });
 
@@ -77,4 +83,3 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
   const result = await res.json().catch(() => null);
   return NextResponse.json(result ?? { message: "Falha ao deletar post." }, { status: res.status });
 }
-

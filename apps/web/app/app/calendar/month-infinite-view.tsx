@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CalendarCellContextMenu } from "@/components/calendar/calendar-cell-context-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -21,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CalendarPostContextMenu } from "@/components/calendar/calendar-post-context-menu";
+import { buildUtcIsoFromRecifeSelection, getNextQuarterSlotInTimeZone } from "@/lib/datetime";
 
 import type { MonthBucket } from "./month-utils";
 import { getMonthGridStartUtc } from "./month-utils";
@@ -48,6 +50,7 @@ type CalendarMonthPost = {
   tags?: string[];
   caption: string;
   scheduledAtUtc?: string;
+  mediaIds?: string[];
 };
 
 type ListResponse = { items: CalendarMonthPost[] };
@@ -123,10 +126,12 @@ async function loadMonth(month: MonthBucket) {
 
 export function MonthInfiniteCalendarView(props: {
   initialMonth: MonthBucket;
+  copiedPost: { postId: string; title?: string; scheduledAtUtc?: string } | null;
+  onCopyPost: (post: { postId: string; title?: string; scheduledAtUtc?: string } | null) => void;
   heightClassName?: string;
   onActiveMonthChange?(month: MonthBucket): void;
 }) {
-  const { initialMonth, heightClassName, onActiveMonthChange } = props;
+  const { initialMonth, copiedPost, onCopyPost, heightClassName, onActiveMonthChange } = props;
   const router = useRouter();
   const queryClient = useQueryClient();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -141,6 +146,7 @@ export function MonthInfiniteCalendarView(props: {
 
   const [selected, setSelected] = useState<CalendarPreviewPost | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const [dayOpen, setDayOpen] = useState(false);
   const [dayKey, setDayKey] = useState<string | null>(null);
@@ -200,11 +206,7 @@ export function MonthInfiniteCalendarView(props: {
       const payload = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao mover para rascunho.");
     },
-    onSuccess: () => {
-      invalidateCalendar();
-      toast.success("Post movido para rascunho.");
-    },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao mover para rascunho."),
+    onSuccess: () => invalidateCalendar(),
   });
 
   const deleteMutation = useMutation({
@@ -216,9 +218,21 @@ export function MonthInfiniteCalendarView(props: {
     onSuccess: () => {
       setPostToDelete(null);
       invalidateCalendar();
-      toast.success("Post excluído.");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao excluir post."),
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: async (params: { sourcePostId: string; scheduledAtUtc: string }) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(params.sourcePostId)}/duplicate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduledAtUtc: params.scheduledAtUtc }),
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao colar postagem.");
+      return payload as { scheduledAtUtc?: string };
+    },
+    onSuccess: () => invalidateCalendar(),
   });
 
   const allItems = useMemo(() => {
@@ -318,6 +332,74 @@ export function MonthInfiniteCalendarView(props: {
     setDayOpen(true);
   }
 
+  function dayKeyToCalendarDate(dayKey: string) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month = Number(m[2]);
+    const day = Number(m[3]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  }
+
+  function extractSourceTimeOrFallback(dayKey: string) {
+    if (copiedPost?.scheduledAtUtc) {
+      const p = getRecifePartsFromIsoUtc(copiedPost.scheduledAtUtc);
+      if (p) return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+    }
+    const next = getNextQuarterSlotInTimeZone(new Date(), "America/Recife");
+    if (dayKey === todayKey) return next.time;
+    return "09:00";
+  }
+
+  function formatSuccessForUtc(isoUtc: string) {
+    const parts = getRecifePartsFromIsoUtc(isoUtc);
+    if (!parts) return "Postagem criada.";
+    return `Postagem criada para ${String(parts.day).padStart(2, "0")}/${String(parts.month).padStart(2, "0")} às ${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+  }
+
+  function moveToDraft(postId: string) {
+    void toast.promise(revertMutation.mutateAsync(postId), {
+      loading: "Movendo para rascunho...",
+      success: "Postagem movida para rascunho.",
+      error: (e) => (e instanceof Error ? e.message : "Falha ao mover para rascunho."),
+    });
+  }
+
+  async function pasteIntoDay(dayKey: string) {
+    if (!copiedPost?.postId) {
+      toast.error("Nenhuma postagem copiada.");
+      return;
+    }
+    const selectedDate = dayKeyToCalendarDate(dayKey);
+    if (!selectedDate) {
+      toast.error("Data inválida.");
+      return;
+    }
+    const timeHHmm = extractSourceTimeOrFallback(dayKey);
+    const scheduledAtUtc = buildUtcIsoFromRecifeSelection({
+      selectedDate,
+      timeHHmm,
+      timeZone: "America/Recife",
+    });
+    const request = duplicateMutation.mutateAsync({
+      sourcePostId: copiedPost.postId,
+      scheduledAtUtc,
+    });
+    await toast.promise(request, {
+      loading: "Criando postagem...",
+      success: () => formatSuccessForUtc(scheduledAtUtc),
+      error: (e) => (e instanceof Error ? e.message : "Falha ao colar postagem."),
+    });
+  }
+
+  function goCreateWithDay(dayKey: string) {
+    const url = new URL("/app/posts/new", window.location.origin);
+    url.searchParams.set("prefillDate", dayKey);
+    url.searchParams.set("prefillTime", extractSourceTimeOrFallback(dayKey));
+    router.push(`${url.pathname}?${url.searchParams.toString()}`);
+  }
+
   return (
     <>
       <div className="bg-card">
@@ -361,8 +443,13 @@ export function MonthInfiniteCalendarView(props: {
                       const dayTone = isPast ? "text-muted-foreground" : "text-foreground";
 
                       return (
-                        <div
+                        <CalendarCellContextMenu
                           key={dateUtc.toISOString()}
+                          canPaste={!!copiedPost}
+                          onCreatePost={() => goCreateWithDay(dateKey)}
+                          onPastePost={() => void pasteIntoDay(dateKey)}
+                        >
+                        <div
                           className={cn(
                             "min-h-[200px] px-1.5 pb-2",
                             "border-border/40 border-r border-b",
@@ -398,18 +485,24 @@ export function MonthInfiniteCalendarView(props: {
                               <CalendarPostContextMenu
                                 key={post.postId}
                                 post={{ postId: post.postId, status: post.status }}
-                                onMoveToDraft={() => revertMutation.mutate(post.postId)}
+                                onMoveToDraft={() => moveToDraft(post.postId)}
+                                onCopyPost={() => {
+                                  onCopyPost({ postId: post.postId, title: post.title, scheduledAtUtc: post.scheduledAtUtc });
+                                  toast.success("Postagem copiada.");
+                                }}
                                 onEdit={() => router.push(`/app/posts/${post.postId}`)}
                                 onDelete={() => setPostToDelete(post)}
-                                isBusy={revertMutation.isPending || deleteMutation.isPending}
+                                isBusy={revertMutation.isPending || deleteMutation.isPending || duplicateMutation.isPending}
                               >
                                 <button
                                   type="button"
+                                  onClick={() => setSelectedEventId(post.postId)}
                                   className={cn(
                                     "group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left",
-                                    "hover:bg-muted/60",
+                                    "transition-colors hover:bg-muted",
+                                    selectedEventId === post.postId && "ring-2 ring-primary/60",
                                   )}
-                                  onClick={() => openPreview(post)}
+                                  onDoubleClick={() => openPreview(post)}
                                 >
                                   <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(post.status))} />
                                   <span className={cn("min-w-0 truncate text-xs font-medium", isPast && "text-muted-foreground")}>
@@ -431,6 +524,7 @@ export function MonthInfiniteCalendarView(props: {
                             ) : null}
                           </div>
                         </div>
+                        </CalendarCellContextMenu>
                       );
                     })}
                   </div>
@@ -465,18 +559,24 @@ export function MonthInfiniteCalendarView(props: {
                 <CalendarPostContextMenu
                   key={p.postId}
                   post={{ postId: p.postId, status: p.status }}
-                  onMoveToDraft={() => revertMutation.mutate(p.postId)}
+                  onMoveToDraft={() => moveToDraft(p.postId)}
+                  onCopyPost={() => {
+                    onCopyPost({ postId: p.postId, title: p.title, scheduledAtUtc: p.scheduledAtUtc });
+                    toast.success("Postagem copiada.");
+                  }}
                   onEdit={() => { setDayOpen(false); router.push(`/app/posts/${p.postId}`); }}
                   onDelete={() => { setDayOpen(false); setPostToDelete(p); }}
-                  isBusy={revertMutation.isPending || deleteMutation.isPending}
+                  isBusy={revertMutation.isPending || deleteMutation.isPending || duplicateMutation.isPending}
                 >
                   <button
                     type="button"
+                    onClick={() => setSelectedEventId(p.postId)}
                     className={cn(
                       "group flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 text-left",
-                      "hover:bg-muted/60",
+                      "transition-colors hover:bg-muted",
+                      selectedEventId === p.postId && "ring-2 ring-primary/60",
                     )}
-                    onClick={() => {
+                    onDoubleClick={() => {
                       setDayOpen(false);
                       openPreview(p);
                     }}
@@ -524,7 +624,14 @@ export function MonthInfiniteCalendarView(props: {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => postToDelete && deleteMutation.mutate(postToDelete.postId)}
+              onClick={() => {
+                if (!postToDelete) return;
+                void toast.promise(deleteMutation.mutateAsync(postToDelete.postId), {
+                  loading: "Excluindo postagem...",
+                  success: "Postagem excluída.",
+                  error: (e) => (e instanceof Error ? e.message : "Falha ao excluir post."),
+                });
+              }}
             >
               Excluir
             </AlertDialogAction>
@@ -534,4 +641,7 @@ export function MonthInfiniteCalendarView(props: {
     </>
   );
 }
+
+
+
 

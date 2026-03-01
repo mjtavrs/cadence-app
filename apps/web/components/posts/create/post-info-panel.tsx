@@ -11,6 +11,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { TagsInput } from "@/components/posts/tags-input";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { formatRecifeDateTimeShort } from "@/lib/datetime";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const CAPTION_LIMIT = 2200;
 
@@ -41,14 +42,20 @@ export function PostInfoPanel(props: {
   saving: boolean;
   onSaveDraft: () => void;
   onSchedulePost: () => void;
+  primaryActionLabel?: string;
+  primaryActionHint?: string;
 }) {
-  const captionLength = useMemo(
-    () => props.caption.replace(/\s+/g, " ").trim().length,
-    [props.caption],
-  );
+  const captionLength = useMemo(() => props.caption.length, [props.caption]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <Alert className="border-amber-300/70 bg-amber-50 text-amber-900 [&>svg]:text-amber-700">
+        <AlertTitle>No MVP, cada post aceita 1 imagem.</AlertTitle>
+        <AlertDescription className="text-amber-800">
+          Vídeo e carrossel entram na próxima fase.
+        </AlertDescription>
+      </Alert>
+
       <div className="space-y-2">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium">Título</span>
@@ -81,7 +88,7 @@ export function PostInfoPanel(props: {
               props.onCaptionChange(e.target.value);
             }
           }}
-          rows={12}
+          rows={16}
           placeholder="Escreva a legenda do seu post..."
         />
         <div className="flex items-center justify-between">
@@ -92,9 +99,7 @@ export function PostInfoPanel(props: {
         </div>
       </div>
 
-      <Separator />
-
-      <div className="space-y-2">
+      <div className="space-y-2 pt-1">
         <div className="text-sm font-medium">Data e hora da publicação</div>
         {props.scheduledAtUtc ? (
           <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -114,7 +119,7 @@ export function PostInfoPanel(props: {
 
       <Separator />
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 pt-1">
         <Button
           variant="outline"
           className="flex-1"
@@ -128,9 +133,12 @@ export function PostInfoPanel(props: {
           disabled={props.saving}
           onClick={props.onSchedulePost}
         >
-          {props.saving ? "Salvando..." : "Agendar post"}
+          {props.saving ? "Salvando..." : props.primaryActionLabel ?? "Agendar post"}
         </Button>
       </div>
+      {props.primaryActionHint ? (
+        <p className="text-muted-foreground text-xs">{props.primaryActionHint}</p>
+      ) : null}
     </div>
   );
 }

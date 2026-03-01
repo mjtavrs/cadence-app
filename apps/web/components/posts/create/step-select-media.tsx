@@ -54,6 +54,13 @@ export function StepSelectMedia(props: {
     props.onLibraryDialogOpenChange(true);
   }
 
+  function confirmLibraryPick() {
+    if (props.pickedMediaId) {
+      props.onSelectMedia(props.pickedMediaId);
+    }
+    props.onConfirmLibraryPick();
+  }
+
   return (
     <div className="flex flex-col items-center p-4">
       <input
@@ -129,7 +136,7 @@ export function StepSelectMedia(props: {
             <Button variant="outline" onClick={() => props.onLibraryDialogOpenChange(false)}>
               Cancelar
             </Button>
-            <Button onClick={props.onConfirmLibraryPick} disabled={!props.pickedMediaId}>
+            <Button onClick={confirmLibraryPick} disabled={!props.pickedMediaId}>
               Abrir
             </Button>
           </DialogFooter>

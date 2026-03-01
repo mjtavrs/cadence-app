@@ -19,12 +19,13 @@ export function StepHeader(props: {
 }) {
   const { step, canAdvance, onBack, onAdvance } = props;
   const showBack = step !== "select";
-  const showAdvance = step !== "create";
+  const showAdvance = step === "crop";
+  const isCreateStep = step === "create";
 
   return (
-    <div className="flex items-center justify-between border-b px-4 pb-4">
-      <div className="flex items-center gap-2">
-        {showBack && onBack && (
+    <div className={`relative flex items-center justify-between px-4 ${isCreateStep ? "py-2" : "pt-3 pb-5 border-b"}`}>
+      <div className="flex w-24 items-center gap-2">
+        {showBack && onBack ? (
           <Button
             type="button"
             variant="ghost"
@@ -35,22 +36,26 @@ export function StepHeader(props: {
           >
             <ArrowLeft className="size-4" />
           </Button>
-        )}
+        ) : null}
       </div>
 
-      <span className="text-sm font-medium">{STEP_TITLES[step]}</span>
-      
-      {showAdvance && onAdvance && (
+      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base font-normal">
+        {STEP_TITLES[step]}
+      </span>
+
+      {showAdvance && onAdvance ? (
         <Button
           type="button"
-          variant="link"
+          variant="ghost"
           size="sm"
-          className="text-primary"
+          className="w-24 justify-end text-primary hover:text-primary hover:bg-transparent"
           disabled={!canAdvance}
           onClick={onAdvance}
         >
           Avançar
         </Button>
+      ) : (
+        <div className="w-24" />
       )}
     </div>
   );

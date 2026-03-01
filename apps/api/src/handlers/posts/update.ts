@@ -1,7 +1,7 @@
 import type { APIGatewayProxyHandler } from "aws-lambda";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
-import { canWrite } from "../../auth/rbac";
+import { canManageApproval, canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { normalizeTags, normalizeTitle, validateTags, validateTitle } from "../../posts/metadata";
@@ -14,6 +14,9 @@ type Body = {
   caption?: string;
   mediaIds?: string[];
   tags?: string[] | string;
+  aspectRatio?: string;
+  cropX?: number;
+  cropY?: number;
 };
 
 type Post = {
@@ -21,6 +24,8 @@ type Post = {
   SK: string;
   status: string;
 };
+
+const VALID_ASPECT_RATIOS = new Set(["original", "1:1", "4:5", "16:9"]);
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
@@ -41,6 +46,26 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const caption = normalizeCaption(body.caption ?? "");
   const mediaIds = body.mediaIds ?? [];
   const tags = body.tags != null ? normalizeTags(body.tags) : null;
+
+  const rawAspectRatio = body.aspectRatio?.trim();
+  const aspectRatio = rawAspectRatio == null || rawAspectRatio.length === 0
+    ? null
+    : rawAspectRatio;
+  if (aspectRatio && !VALID_ASPECT_RATIOS.has(aspectRatio)) {
+    return badRequest("aspectRatio inválido.");
+  }
+
+  const hasCropX = body.cropX != null;
+  const hasCropY = body.cropY != null;
+  const cropX = typeof body.cropX === "number" && Number.isFinite(body.cropX) ? body.cropX : null;
+  const cropY = typeof body.cropY === "number" && Number.isFinite(body.cropY) ? body.cropY : null;
+
+  if (hasCropX && (cropX == null || cropX < 0 || cropX > 1)) {
+    return badRequest("cropX inválido.");
+  }
+  if (hasCropY && (cropY == null || cropY < 0 || cropY > 1)) {
+    return badRequest("cropY inválido.");
+  }
 
   if (!workspaceId) return badRequest("workspaceId é obrigatório.");
   if (!caption) return badRequest("Legenda não pode estar vazia.");
@@ -72,8 +97,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     if (!post) return badRequest("Post não encontrado.");
 
     const now = new Date().toISOString();
-
-    const shouldReReview = post.status === "APPROVED" || post.status === "SCHEDULED";
+    const shouldReReview =
+      !canManageApproval(membership.role) &&
+      (post.status === "APPROVED" || post.status === "SCHEDULED");
 
     const setParts: string[] = ["#caption = :caption", "#mediaIds = :mediaIds", "#updatedAt = :now"];
     const removeParts: string[] = [];
@@ -99,6 +125,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       setParts.push("#tags = :tags");
       names["#tags"] = "tags";
       values[":tags"] = tags;
+    }
+
+    if (aspectRatio != null) {
+      setParts.push("#aspectRatio = :aspectRatio");
+      names["#aspectRatio"] = "aspectRatio";
+      values[":aspectRatio"] = aspectRatio;
+    }
+
+    if (hasCropX) {
+      setParts.push("#cropX = :cropX");
+      names["#cropX"] = "cropX";
+      values[":cropX"] = cropX;
+    }
+
+    if (hasCropY) {
+      setParts.push("#cropY = :cropY");
+      names["#cropY"] = "cropY";
+      values[":cropY"] = cropY;
     }
 
     if (shouldReReview) {
@@ -138,4 +182,3 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     return serverError("Não foi possível atualizar o post agora.");
   }
 };
-

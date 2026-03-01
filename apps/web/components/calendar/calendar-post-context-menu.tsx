@@ -1,6 +1,6 @@
 "use client";
 
-import { FilePenLineIcon, FileDownIcon, TrashIcon } from "lucide-react";
+import { CopyIcon, FilePenLineIcon, FileDownIcon, TrashIcon } from "lucide-react";
 
 import {
   ContextMenu,
@@ -26,11 +26,12 @@ export function CalendarPostContextMenu(props: {
   post: CalendarPostContextMenuPost;
   children: React.ReactNode;
   onMoveToDraft: () => void;
+  onCopyPost?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   isBusy?: boolean;
 }) {
-  const { post, children, onMoveToDraft, onEdit, onDelete, isBusy = false } = props;
+  const { post, children, onMoveToDraft, onCopyPost, onEdit, onDelete, isBusy = false } = props;
   const canRevertToDraft = post.status !== "DRAFT";
 
   return (
@@ -39,19 +40,25 @@ export function CalendarPostContextMenu(props: {
       <ContextMenuContent>
         <ContextMenuItem
           disabled={!canRevertToDraft}
-          onSelect={(e) => {
-            e.preventDefault();
+          onSelect={() => {
             if (canRevertToDraft) onMoveToDraft();
           }}
         >
           <FileDownIcon />
           Mover para rascunho
         </ContextMenuItem>
-        <ContextMenuItem onSelect={(e) => { e.preventDefault(); onEdit(); }}>
+        <ContextMenuItem onSelect={onEdit}>
           <FilePenLineIcon />
           Editar
         </ContextMenuItem>
-        <ContextMenuItem variant="destructive" onSelect={(e) => { e.preventDefault(); onDelete(); }}>
+        <ContextMenuItem
+          disabled={!onCopyPost}
+          onSelect={() => onCopyPost?.()}
+        >
+          <CopyIcon />
+          Copiar postagem
+        </ContextMenuItem>
+        <ContextMenuItem variant="destructive" onSelect={onDelete}>
           <TrashIcon />
           Excluir
         </ContextMenuItem>

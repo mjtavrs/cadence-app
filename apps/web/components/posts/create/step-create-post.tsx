@@ -22,6 +22,8 @@ export function StepCreatePost(props: {
   saving: boolean;
   onSaveDraft: () => void;
   onSchedulePost: () => void;
+  primaryActionLabel?: string;
+  primaryActionHint?: string;
 }) {
   const [panelVisible, setPanelVisible] = useState(false);
 
@@ -31,21 +33,21 @@ export function StepCreatePost(props: {
   }, []);
 
   return (
-    <div className="flex flex-wrap gap-6">
+    <div className="flex flex-wrap items-start gap-5">
       <div className="w-full min-w-0 max-w-[700px] flex-1">
-        <div className="p-4">
+        <div>
           <PostPreviewCrop
             imageSrc={props.imageSrc}
             imageAlt={props.imageAlt}
             aspectRatio={props.aspectRatio}
-            onAspectRatioChange={() => {}}
+            showAspectRatioControl={false}
             emptyPlaceholder="Nenhuma imagem selecionada"
           />
         </div>
       </div>
 
       <Card
-        className={`w-[380px] shrink-0 p-4 h-fit transition-all duration-300 ease-out ${
+        className={`w-[340px] shrink-0 p-4 h-fit transition-all duration-300 ease-out ${
           panelVisible
             ? "translate-x-0 opacity-100"
             : "translate-x-4 opacity-0"
@@ -63,6 +65,8 @@ export function StepCreatePost(props: {
           saving={props.saving}
           onSaveDraft={props.onSaveDraft}
           onSchedulePost={props.onSchedulePost}
+          primaryActionLabel={props.primaryActionLabel}
+          primaryActionHint={props.primaryActionHint}
         />
       </Card>
     </div>

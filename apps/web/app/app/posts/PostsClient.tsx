@@ -21,6 +21,7 @@ import { PostCard, type PostListItem, type PostStatus } from "@/components/posts
 import { PostsFiltersBar } from "@/components/posts/posts-filters-bar";
 import { PostPreviewSheet } from "@/components/posts/post-preview-sheet";
 import { MdOutlineHistoryEdu } from "react-icons/md";
+import { useWorkspaceRole } from "@/hooks/use-workspace-role";
 
 export type Post = {
   postId: string;
@@ -46,6 +47,8 @@ function getErrorMessage(value: unknown) {
 
 export function PostsClient(props: { initialItems: Post[] }) {
   const router = useRouter();
+  const { role } = useWorkspaceRole();
+  const canManageApproval = role === "OWNER" || role === "ADMIN";
   const queryClient = useQueryClient();
   const [schedulePostId, setSchedulePostId] = useState<string | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -86,6 +89,12 @@ export function PostsClient(props: { initialItems: Post[] }) {
       }
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [postsQuery.data]);
+
+  const availableStatuses = useMemo(() => {
+    const order: PostStatus[] = ["DRAFT", "IN_REVIEW", "APPROVED", "SCHEDULED", "PUBLISHED", "FAILED"];
+    const present = new Set<PostStatus>((postsQuery.data ?? []).map((post) => post.status));
+    return order.filter((status) => present.has(status));
   }, [postsQuery.data]);
 
   const filteredItems = useMemo(() => {
@@ -164,7 +173,7 @@ export function PostsClient(props: { initialItems: Post[] }) {
   const invalidate = async () => queryClient.invalidateQueries({ queryKey: ["posts"] });
 
   const actionMutation = useMutation({
-    mutationFn: async (params: { postId: string; action: "submit" | "approve" | "cancel" }) => {
+    mutationFn: async (params: { postId: string; action: "submit" | "approve" | "cancel" | "retry" }) => {
       const res = await fetch(`/api/posts/${encodeURIComponent(params.postId)}/${params.action}`, { method: "POST" });
       const payload = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao executar ação.");
@@ -224,15 +233,17 @@ export function PostsClient(props: { initialItems: Post[] }) {
     },
   });
 
-  async function action(postId: string, actionName: "submit" | "approve" | "cancel") {
+  async function action(postId: string, actionName: "submit" | "approve" | "cancel" | "retry") {
     try {
       await actionMutation.mutateAsync({ postId, action: actionName });
       const msg =
         actionName === "submit"
-          ? "Post enviado para review."
+          ? "Post enviado para aprovação."
           : actionName === "approve"
             ? "Post aprovado."
-            : "Agendamento cancelado.";
+            : actionName === "cancel"
+              ? "Agendamento cancelado."
+              : "Post reagendado para +2 minutos.";
       toast.success(msg);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao executar ação.");
@@ -287,6 +298,7 @@ export function PostsClient(props: { initialItems: Post[] }) {
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         availableTags={availableTags}
+        availableStatuses={availableStatuses}
       />
 
       {postsQuery.isLoading ? (
@@ -313,16 +325,17 @@ export function PostsClient(props: { initialItems: Post[] }) {
               <h2 className="text-lg font-semibold">{dateLabel}</h2>
               <div className="grid gap-4">
                 {posts.map((p) => {
-                  const previewPost = previewPostId === p.postId ? p : null;
                   return (
                     <div key={p.postId}>
                       <PostCard
                         item={p as unknown as PostListItem}
                         isBusy={isBusy || deleteMutation.isPending || duplicateMutation.isPending}
                         onSubmit={() => void action(p.postId, "submit")}
-                        onApprove={() => void action(p.postId, "approve")}
-                        onSchedule={() => openSchedule(p.postId)}
-                        onCancel={() => void action(p.postId, "cancel")}
+                        onApprove={canManageApproval ? () => void action(p.postId, "approve") : undefined}
+                        onSchedule={canManageApproval ? () => openSchedule(p.postId) : undefined}
+                        onCancel={canManageApproval ? () => void action(p.postId, "cancel") : undefined}
+                        onRetry={canManageApproval ? () => void action(p.postId, "retry") : undefined}
+                        submitLabel="Enviar para aprovação"
                         onDelete={() => void deletePost(p.postId)}
                         onPreview={() => setPreviewPostId(p.postId)}
                         onDuplicate={() => {
@@ -341,6 +354,15 @@ export function PostsClient(props: { initialItems: Post[] }) {
 
       {previewPostId && (() => {
         const foundPost = filteredItems.find((p) => p.postId === previewPostId);
+        const canRunNextStatus =
+          foundPost == null
+            ? true
+            : foundPost.status === "DRAFT" ||
+              (canManageApproval &&
+                (foundPost.status === "IN_REVIEW" ||
+                  foundPost.status === "APPROVED" ||
+                  foundPost.status === "SCHEDULED" ||
+                  foundPost.status === "FAILED"));
         return (
           <PostPreviewSheet
             open={!!previewPostId}
@@ -360,18 +382,29 @@ export function PostsClient(props: { initialItems: Post[] }) {
             setPreviewPostId(null);
             router.push(`/app/posts/${encodeURIComponent(previewPostId)}`);
           }}
-          onNextStatus={() => {
-            const post = filteredItems.find((p) => p.postId === previewPostId);
-            if (!post) return;
-            if (post.status === "DRAFT") void action(post.postId, "submit");
-            else if (post.status === "IN_REVIEW") void action(post.postId, "approve");
-            else if (post.status === "APPROVED") openSchedule(post.postId);
-            else if (post.status === "SCHEDULED") void action(post.postId, "cancel");
-          }}
+          onNextStatus={
+            canRunNextStatus
+              ? () => {
+                  const post = filteredItems.find((p) => p.postId === previewPostId);
+                  if (!post) return;
+                  if (post.status === "DRAFT") void action(post.postId, "submit");
+                  else if (post.status === "IN_REVIEW" && canManageApproval) void action(post.postId, "approve");
+                  else if (post.status === "APPROVED" && canManageApproval) openSchedule(post.postId);
+                  else if (post.status === "SCHEDULED" && canManageApproval) void action(post.postId, "cancel");
+                  else if (post.status === "FAILED" && canManageApproval) void action(post.postId, "retry");
+                }
+              : undefined
+          }
+          nextStatusLabel={
+            foundPost?.status === "DRAFT"
+              ? "Enviar para aprovação"
+              : foundPost?.status === "FAILED" && canManageApproval
+                ? "Reagendar (+2 min)"
+                : undefined
+          }
           />
         );
       })()}
     </div>
   );
 }
-

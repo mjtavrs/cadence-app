@@ -71,14 +71,26 @@ export function PostPreviewCrop(props: {
   imageSrc: string | null;
   imageAlt?: string;
   aspectRatio: PreviewAspectRatio;
-  onAspectRatioChange: (value: PreviewAspectRatio) => void;
+  onAspectRatioChange?: (value: PreviewAspectRatio) => void;
   onCropChange?: (crop: CropData) => void;
   emptyPlaceholder?: string;
   onEmptyAreaClick?: () => void;
   isLoading?: boolean;
   className?: string;
+  showAspectRatioControl?: boolean;
 }) {
-  const { imageSrc, imageAlt, aspectRatio, onAspectRatioChange, onCropChange, emptyPlaceholder, onEmptyAreaClick, isLoading, className } = props;
+  const {
+    imageSrc,
+    imageAlt,
+    aspectRatio,
+    onAspectRatioChange,
+    onCropChange,
+    emptyPlaceholder,
+    onEmptyAreaClick,
+    isLoading,
+    className,
+    showAspectRatioControl = true,
+  } = props;
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
@@ -258,6 +270,7 @@ export function PostPreviewCrop(props: {
               onPointerLeave={handlePointerUp}
               onPointerCancel={handlePointerUp}
             />
+            {showAspectRatioControl ? (
             <div className="absolute bottom-2 left-2 z-20">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -267,7 +280,7 @@ export function PostPreviewCrop(props: {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top">
-                  <DropdownMenuRadioGroup value={aspectRatio} onValueChange={(v) => onAspectRatioChange(v as PreviewAspectRatio)}>
+                  <DropdownMenuRadioGroup value={aspectRatio} onValueChange={(v) => onAspectRatioChange?.(v as PreviewAspectRatio)}>
                     {ASPECT_OPTIONS.map((opt) => (
                       <DropdownMenuRadioItem key={opt.value} value={opt.value}>
                         {opt.label}
@@ -277,6 +290,7 @@ export function PostPreviewCrop(props: {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            ) : null}
           </>
         ) : (
           <button

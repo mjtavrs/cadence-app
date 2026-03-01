@@ -1,4 +1,4 @@
-const TZ = "America/Recife";
+﻿const TZ = "America/Recife";
 
 type DateParts = {
   year: number;
@@ -155,6 +155,15 @@ export function buildUtcIsoFromRecifeSelection(params: {
   return utc.toISOString();
 }
 
+export function getCalendarDateAndTimeFromUtcRecife(isoUtc: string, timeZone: string = TZ) {
+  const dt = new Date(isoUtc);
+  if (Number.isNaN(dt.getTime())) return null;
+  const parts = getParts(dt, timeZone);
+  const dateForCalendar = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12, 0, 0));
+  const time = `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+  return { dateForCalendar, time } as const;
+}
+
 export function formatRecifeDateTimeShort(isoUtc: string, timeZone: string = TZ) {
   return new Intl.DateTimeFormat("pt-BR", {
     timeZone,
@@ -195,7 +204,9 @@ export function formatDateForSection(isoUtc: string, timeZone: string = TZ): str
     day: "numeric",
     month: "long",
   }).format(date);
-}export function formatDateAndTime(isoUtc: string, timeZone: string = TZ): string {
+}
+
+export function formatDateAndTime(isoUtc: string, timeZone: string = TZ): string {
   const parts = getParts(new Date(isoUtc), timeZone);
   const dateStr = formatYmdPtBr(new Date(isoUtc), timeZone);
   const timeStr = `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;

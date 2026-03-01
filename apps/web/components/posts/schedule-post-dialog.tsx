@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -6,7 +6,7 @@ import { ptBR } from "react-day-picker/locale";
 
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   buildUtcIsoFromRecifeSelection,
@@ -54,6 +54,31 @@ export function SchedulePostDialog(props: {
     return t ? clampTimeToSchedule(t) : undefined;
   });
 
+  const todayYmd = useMemo(() => formatYmdPtBr(today, TZ), [today]);
+  const referenceTime = useMemo(
+    () => clampTimeToSchedule(props.defaultTimeHHmm),
+    [props.defaultTimeHHmm]
+  );
+
+  const unavailableTimes = useMemo(() => {
+    const blocked = new Set<string>();
+    if (!date) return blocked;
+
+    const selectedYmd = formatYmdPtBr(date, TZ);
+    const isTodaySelection = selectedYmd === todayYmd;
+    if (!isTodaySelection) return blocked;
+    for (const t of timeOptions) {
+      if (t < referenceTime) blocked.add(t);
+    }
+
+    return blocked;
+  }, [date, referenceTime, timeOptions, todayYmd]);
+
+  const effectiveTimeHHmm = useMemo(() => {
+    if (timeHHmm && !unavailableTimes.has(timeHHmm)) return timeHHmm;
+    return timeOptions.find((t) => !unavailableTimes.has(t));
+  }, [timeHHmm, unavailableTimes, timeOptions]);
+
   const isSelectionOnly = props.postId == null;
 
   async function confirm() {
@@ -61,24 +86,28 @@ export function SchedulePostDialog(props: {
       toast.error("Selecione um dia.");
       return;
     }
-    if (!timeHHmm) {
+    if (!effectiveTimeHHmm) {
       toast.error("Selecione um horário.");
       return;
     }
-    if (!isAlignedToMinutes(timeHHmm, STEP_MINUTES)) {
+    if (!isAlignedToMinutes(effectiveTimeHHmm, STEP_MINUTES)) {
       toast.error(`O horário deve estar alinhado em ${STEP_MINUTES} minutos.`);
       return;
     }
-    const hourMatch = /^(\d{2})/.exec(timeHHmm);
+    const hourMatch = /^(\d{2})/.exec(effectiveTimeHHmm);
     const hour = hourMatch ? Number(hourMatch[1]) : -1;
-    if (hour < SCHEDULE_MIN_HOUR || hour >= SCHEDULE_MAX_HOUR) {
+    if (hour < SCHEDULE_MIN_HOUR || hour > SCHEDULE_MAX_HOUR) {
       toast.error(`O horário deve ser entre ${String(SCHEDULE_MIN_HOUR).padStart(2, "0")}:00 e ${String(SCHEDULE_MAX_HOUR).padStart(2, "0")}:00.`);
+      return;
+    }
+    if (unavailableTimes.has(effectiveTimeHHmm)) {
+      toast.error("Escolha um horário disponível no futuro.");
       return;
     }
 
     const scheduledAtUtc = buildUtcIsoFromRecifeSelection({
       selectedDate: date,
-      timeHHmm,
+      timeHHmm: effectiveTimeHHmm,
       timeZone: TZ,
     });
 
@@ -108,9 +137,6 @@ export function SchedulePostDialog(props: {
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{isSelectionOnly ? "Definir data e hora" : "Agendar post"}</DialogTitle>
-          <DialogDescription>
-            Escolha a data e o horário (America/Recife). O agendamento precisa ser no futuro.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
@@ -121,7 +147,7 @@ export function SchedulePostDialog(props: {
             </div>
             <div>
               <div className="text-sm font-medium">Horário</div>
-              <div className="text-muted-foreground mt-1 text-xs">{timeHHmm ?? "—"}</div>
+              <div className="text-muted-foreground mt-1 text-xs">{effectiveTimeHHmm ?? "—"}</div>
             </div>
           </div>
 
@@ -138,13 +164,13 @@ export function SchedulePostDialog(props: {
 
             <div className="sm:pt-1">
               <div className="text-sm font-medium">Selecionar horário</div>
-              <Select value={timeHHmm} onValueChange={(v) => setTimeHHmm(v)}>
+              <Select value={effectiveTimeHHmm} onValueChange={(v) => setTimeHHmm(v)}>
                 <SelectTrigger className="mt-2 w-full sm:w-48">
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent position="popper" className="max-h-72">
                   {timeOptions.map((t) => (
-                    <SelectItem key={t} value={t}>
+                    <SelectItem key={t} value={t} disabled={unavailableTimes.has(t)}>
                       {t}
                     </SelectItem>
                   ))}
@@ -169,4 +195,3 @@ export function SchedulePostDialog(props: {
     </Dialog>
   );
 }
-

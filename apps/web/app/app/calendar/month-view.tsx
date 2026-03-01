@@ -42,6 +42,7 @@ export type CalendarMonthPost = {
   tags?: string[];
   caption: string;
   scheduledAtUtc?: string;
+  mediaIds?: string[];
 };
 
 type ListResponse = { items: CalendarMonthPost[] };
@@ -216,9 +217,9 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
                         type="button"
                         className={cn(
                           "group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left",
-                          "hover:bg-muted/60",
+                          "transition-colors hover:bg-muted",
                         )}
-                        onClick={() => openPreview(p)}
+                        onDoubleClick={() => openPreview(p)}
                       >
                         <span className={cn("h-4 w-1 shrink-0 rounded-full", statusBarClass(p.status))} />
                         <span className="min-w-0 truncate text-xs font-medium">
@@ -278,9 +279,9 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
                     type="button"
                     className={cn(
                       "group flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 text-left",
-                      "hover:bg-muted/60",
+                      "transition-colors hover:bg-muted",
                     )}
-                    onClick={() => {
+                    onDoubleClick={() => {
                       setDayOpen(false);
                       openPreview(p);
                     }}
@@ -339,4 +340,7 @@ export function MonthCalendarView(props: { monthBucket: MonthBucket; monthDateUt
     </>
   );
 }
+
+
+
 

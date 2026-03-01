@@ -17,10 +17,11 @@ import { formatDateAndTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 
 const nextStatusButtonLabels: Partial<Record<PostStatus, string>> = {
-  DRAFT: "Enviar para revisão",
+  DRAFT: "Enviar para aprovação",
   IN_REVIEW: "Aprovar",
   APPROVED: "Agendar",
   SCHEDULED: "Cancelar agendamento",
+  FAILED: "Reagendar (+2 min)",
 };
 
 function getNextStatusButtonLabel(status: PostStatus): string {
@@ -44,6 +45,7 @@ type PostPreviewSheetProps = {
   };
   onEdit?: () => void;
   onNextStatus?: () => void;
+  nextStatusLabel?: string;
 };
 
 type MediaItem = {
@@ -275,7 +277,7 @@ export function PostPreviewSheet(props: PostPreviewSheetProps) {
                   )}
                   {props.onNextStatus && (
                     <Button size="sm" onClick={props.onNextStatus}>
-                      {getNextStatusButtonLabel(post.status)}
+                      {props.nextStatusLabel ?? getNextStatusButtonLabel(post.status)}
                     </Button>
                   )}
                 </div>

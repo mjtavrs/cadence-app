@@ -1,12 +1,13 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { TrashIcon, Eye, Pencil, Copy } from "lucide-react";
-import { toast } from "sonner";
+import { TrashIcon, Eye, Pencil, Copy, Clock3 } from "lucide-react";
 import { SlOptionsVertical } from "react-icons/sl";
-import { FaImage, FaVideo } from "react-icons/fa";
-import { FaInstagram } from "react-icons/fa";
+import { BsSendArrowUp } from "react-icons/bs";
+import { FaImage, FaInstagram } from "react-icons/fa";
+import { FaRegCheckCircle } from "react-icons/fa";
+import { LuCalendarPlus, LuCalendarSync, LuCalendarX2 } from "react-icons/lu";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -45,106 +46,148 @@ export type PostListItem = {
   scheduledAtUtc?: string;
 };
 
+function statusRailClass(status: PostStatus) {
+  if (status === "FAILED") return "border-l-destructive";
+  if (status === "PUBLISHED") return "border-l-emerald-500";
+  if (status === "SCHEDULED") return "border-l-cyan-500";
+  if (status === "APPROVED") return "border-l-blue-500";
+  if (status === "IN_REVIEW") return "border-l-amber-500";
+  return "border-l-muted-foreground/60";
+}
 
 export function PostCard(props: {
   item: PostListItem;
   isBusy: boolean;
-  onSubmit(): void;
-  onApprove(): void;
-  onSchedule(): void;
-  onCancel(): void;
+  onSubmit?(): void;
+  onApprove?(): void;
+  onSchedule?(): void;
+  onCancel?(): void;
+  onRetry?(): void;
   onDelete(): void;
   onPreview?(): void;
   onDuplicate?(): void;
   onCaptionMore?: () => void;
+  submitLabel?: string;
 }) {
   const p = props.item;
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  const titleSafe = (p.title ?? "").trim() || "Sem título";
+  const captionSafe = typeof p.caption === "string" ? p.caption : "";
+  const tagsSafe = useMemo(
+    () => (Array.isArray(p.tags) ? p.tags.map((tag) => tag.trim()).filter(Boolean) : []),
+    [p.tags],
+  );
+  const visibleTags = tagsSafe.slice(0, 4);
+  const hiddenTagsCount = Math.max(0, tagsSafe.length - visibleTags.length);
+  const mediaCount = Array.isArray(p.mediaIds) ? p.mediaIds.length : 0;
+  const isDraft = p.status === "DRAFT";
+
   function getStatusAction() {
     switch (p.status) {
       case "DRAFT":
-        return { label: "Enviar para review", action: props.onSubmit };
+        if (!props.onSubmit) return null;
+        return { label: props.submitLabel ?? "Enviar para aprovação", action: props.onSubmit, icon: BsSendArrowUp };
       case "IN_REVIEW":
-        return { label: "Aprovar", action: props.onApprove };
+        if (!props.onApprove) return null;
+        return { label: "Aprovar", action: props.onApprove, icon: FaRegCheckCircle };
       case "APPROVED":
-        return { label: "Agendar", action: props.onSchedule };
+        if (!props.onSchedule) return null;
+        return { label: "Agendar", action: props.onSchedule, icon: LuCalendarPlus };
       case "SCHEDULED":
-        return { label: "Cancelar agendamento", action: props.onCancel };
+        if (!props.onCancel) return null;
+        return { label: "Cancelar agendamento", action: props.onCancel, icon: LuCalendarX2 };
+      case "FAILED":
+        if (!props.onRetry) return null;
+        return { label: "Reagendar (+2 min)", action: props.onRetry, icon: LuCalendarSync };
       default:
         return null;
     }
   }
 
   const statusAction = getStatusAction();
-
-  const isDraft = p.status === "DRAFT";
+  const scheduleLabel = p.status === "IN_REVIEW" ? "Sugestão:" : "Agendado:";
 
   return (
-    <Card className={cn("p-4", isDraft && "border-dashed bg-muted/30")}>
-      <div className="flex flex-col gap-4">
-        {/* Topo: Título + Status + Data */}
+    <Card
+      className={cn(
+        "relative border border-border/70 border-l-4 p-4 transition-all duration-200 hover:shadow-sm",
+        statusRailClass(p.status),
+        isDraft && "bg-muted/20 [border-style:dashed] [border-left-style:solid]",
+      )}
+    >
+      <div className="ml-1 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-2">
-            <h3 className="text-base font-medium">{p.title?.trim() || "Sem título"}</h3>
+          <div className="min-w-0 flex-1 space-y-2.5">
+            <h3 className="truncate text-lg font-semibold leading-tight">{titleSafe}</h3>
             <div className="flex flex-wrap items-center gap-2">
               <PostStatusBadge status={p.status} />
-              {p.scheduledAtUtc && (
-                <span className="text-muted-foreground text-xs">
-                  Agendado: {formatDateAndTime(p.scheduledAtUtc)}
-                </span>
-              )}
+              {p.scheduledAtUtc ? (
+                <Badge variant="outline" className="gap-1 border-border/70 bg-background text-muted-foreground">
+                  <Clock3 className="size-3.5" />
+                  <span className="text-xs">
+                    {scheduleLabel} {formatDateAndTime(p.scheduledAtUtc)}
+                  </span>
+                </Badge>
+              ) : null}
             </div>
           </div>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8 shrink-0" disabled={props.isBusy} aria-label="Opções">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0"
+                disabled={props.isBusy}
+                aria-label="Opções"
+              >
                 <SlOptionsVertical className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {statusAction && (
                 <DropdownMenuItem onClick={statusAction.action} disabled={props.isBusy}>
+                  <statusAction.icon className="size-4 shrink-0" />
                   {statusAction.label}
                 </DropdownMenuItem>
               )}
               {props.onPreview && (
                 <DropdownMenuItem onClick={props.onPreview}>
-                  <Eye className="mr-2 size-4" />
+                  <Eye className="size-4 shrink-0" />
                   Preview
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem asChild>
                 <Link href={`/app/posts/${encodeURIComponent(p.postId)}`}>
-                  <Pencil className="mr-2 size-4" />
+                  <Pencil className="size-4 shrink-0" />
                   Editar
                 </Link>
               </DropdownMenuItem>
               {props.onDuplicate && (
                 <DropdownMenuItem onClick={props.onDuplicate}>
-                  <Copy className="mr-2 size-4" />
+                  <Copy className="size-4 shrink-0" />
                   Duplicar
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)} disabled={props.isBusy}>
-                <TrashIcon className="mr-2 size-4" />
+                <TrashIcon className="size-4 shrink-0" />
                 Excluir
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        {/* Corpo: Legenda + Tags + Ícone de mídia */}
-        <div className="space-y-2">
-          <div className="text-sm text-muted-foreground">
-            {p.caption.length > 100 ? (
+        <div className="space-y-3">
+          <div className="text-sm leading-relaxed text-muted-foreground">
+            {captionSafe.length > 120 ? (
               <>
-                {p.caption.slice(0, 100)}
+                {captionSafe.slice(0, 120)}
                 <span className="text-muted-foreground">...</span>{" "}
                 <button
                   type="button"
-                  className="text-primary hover:underline"
+                  className="text-primary underline-offset-2 hover:underline"
                   onClick={(e) => {
                     e.stopPropagation();
                     props.onCaptionMore?.();
@@ -154,42 +197,53 @@ export function PostCard(props: {
                 </button>
               </>
             ) : (
-              p.caption
+              captionSafe || "Sem legenda"
             )}
           </div>
-          {p.tags && p.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {p.tags.map((t) => (
-                <Badge key={t} variant="outline" className="text-xs">
-                  #{t}
+
+          {visibleTags.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {visibleTags.map((tag) => (
+                <Badge key={tag} variant="secondary" className="border border-border/50 bg-muted/60 text-xs font-medium">
+                  #{tag}
                 </Badge>
               ))}
+              {hiddenTagsCount > 0 ? (
+                <Badge variant="outline" className="text-xs">
+                  +{hiddenTagsCount}
+                </Badge>
+              ) : null}
             </div>
-          )}
-          {p.mediaIds && p.mediaIds.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <FaImage className="size-4 text-muted-foreground" />
-              <span className="text-muted-foreground text-xs">Imagem</span>
+          ) : null}
+
+          {mediaCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="gap-1 border-border/70 bg-background text-xs text-muted-foreground">
+                <FaImage className="size-3.5" />
+                Imagem
+              </Badge>
+              <Badge variant="outline" className="border-border/70 bg-background text-xs text-muted-foreground">
+                {mediaCount} mídia{mediaCount > 1 ? "s" : ""}
+              </Badge>
             </div>
-          )}
+          ) : null}
         </div>
 
-        {/* Footer: Rede social + Código */}
-        <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-border/70 pt-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <FaInstagram className="size-3.5" />
-            <span>• Feed</span>
+            <span>Feed</span>
           </div>
-          {p.shortCode && <span className="font-mono">Código: {p.shortCode}</span>}
+          {p.shortCode ? <span className="font-mono">Código: {p.shortCode}</span> : null}
         </div>
       </div>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Deletar post</AlertDialogTitle>
+            <AlertDialogTitle>Excluir post</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja deletar este post? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir este post? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -201,7 +255,7 @@ export function PostCard(props: {
                 props.onDelete();
               }}
             >
-              Deletar
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -209,4 +263,3 @@ export function PostCard(props: {
     </Card>
   );
 }
-

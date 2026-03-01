@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { format } from "date-fns";
@@ -10,19 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field";
+import { FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { PostStatus } from "@/components/posts/post-card";
 
 const statusLabels: Record<PostStatus, string> = {
@@ -53,14 +44,36 @@ export function PostsFiltersBar(props: {
   dateRange: { from?: Date; to?: Date };
   onDateRangeChange(value: { from?: Date; to?: Date }): void;
   availableTags: string[];
+  availableStatuses: PostStatus[];
 }) {
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [draftStatusFilters, setDraftStatusFilters] = useState<PostStatus[]>(props.statusFilters);
+  const [draftTagFilters, setDraftTagFilters] = useState<string[]>(props.tagFilters);
+  const [draftDateRange, setDraftDateRange] = useState<{ from?: Date; to?: Date }>(props.dateRange);
 
   const hasActiveFilters =
     props.statusFilters.length > 0 ||
     props.tagFilters.length > 0 ||
     props.dateRange.from != null ||
     props.dateRange.to != null;
+
+  const visibleStatusOptions =
+    props.availableStatuses.length > 0
+      ? STATUS_OPTIONS.filter((status) => props.availableStatuses.includes(status))
+      : STATUS_OPTIONS;
+
+  function applyDraftFilters() {
+    props.onStatusFiltersChange(draftStatusFilters);
+    props.onTagFiltersChange(draftTagFilters);
+    props.onDateRangeChange(draftDateRange);
+    setPopoverOpen(false);
+  }
+
+  function clearDraftFilters() {
+    setDraftStatusFilters([]);
+    setDraftTagFilters([]);
+    setDraftDateRange({});
+  }
 
   function clearAllFilters() {
     props.onStatusFiltersChange([]);
@@ -70,17 +83,17 @@ export function PostsFiltersBar(props: {
   }
 
   function toggleStatus(status: PostStatus) {
-    const next = props.statusFilters.includes(status)
-      ? props.statusFilters.filter((s) => s !== status)
-      : [...props.statusFilters, status];
-    props.onStatusFiltersChange(next);
+    const next = draftStatusFilters.includes(status)
+      ? draftStatusFilters.filter((s) => s !== status)
+      : [...draftStatusFilters, status];
+    setDraftStatusFilters(next);
   }
 
   function toggleTag(tag: string) {
-    const next = props.tagFilters.includes(tag)
-      ? props.tagFilters.filter((t) => t !== tag)
-      : [...props.tagFilters, tag];
-    props.onTagFiltersChange(next);
+    const next = draftTagFilters.includes(tag)
+      ? draftTagFilters.filter((t) => t !== tag)
+      : [...draftTagFilters, tag];
+    setDraftTagFilters(next);
   }
 
   function removeStatusChip(status: PostStatus) {
@@ -105,13 +118,23 @@ export function PostsFiltersBar(props: {
           className="min-w-[200px] max-w-[320px] flex-1 sm:max-w-[280px]"
         />
 
-        <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+        <Popover
+          open={popoverOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setDraftStatusFilters(props.statusFilters);
+              setDraftTagFilters(props.tagFilters);
+              setDraftDateRange(props.dateRange);
+            }
+            setPopoverOpen(open);
+          }}
+        >
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
               <TbFilterSearch className="size-4" />
               Filtros
               {hasActiveFilters ? (
-                <span className="bg-primary text-primary-foreground size-5 rounded-full text-xs leading-5">
+                <span className="bg-primary text-primary-foreground inline-flex size-5 items-center justify-center rounded-full text-xs leading-none">
                   {props.statusFilters.length +
                     props.tagFilters.length +
                     (props.dateRange.from || props.dateRange.to ? 1 : 0)}
@@ -124,20 +147,17 @@ export function PostsFiltersBar(props: {
               <FieldSet>
                 <FieldLegend variant="label">Status</FieldLegend>
                 <FieldGroup className="grid grid-cols-2 gap-2">
-                  {STATUS_OPTIONS.map((status) => (
-                    <Field key={status} orientation="horizontal">
+                  {visibleStatusOptions.map((status) => (
+                    <div key={status} className="inline-flex w-fit items-center gap-2">
                       <Checkbox
                         id={`filter-status-${status}`}
-                        checked={props.statusFilters.includes(status)}
+                        checked={draftStatusFilters.includes(status)}
                         onCheckedChange={() => toggleStatus(status)}
                       />
-                      <FieldLabel
-                        htmlFor={`filter-status-${status}`}
-                        className="cursor-pointer font-normal"
-                      >
+                      <Label htmlFor={`filter-status-${status}`} className="w-fit cursor-pointer text-sm font-normal">
                         {statusLabels[status]}
-                      </FieldLabel>
-                    </Field>
+                      </Label>
+                    </div>
                   ))}
                 </FieldGroup>
               </FieldSet>
@@ -145,21 +165,18 @@ export function PostsFiltersBar(props: {
               {props.availableTags.length > 0 ? (
                 <FieldSet>
                   <FieldLegend variant="label">Tags</FieldLegend>
-                  <FieldGroup className="max-h-40 gap-2 overflow-y-auto">
+                  <FieldGroup className="grid max-h-44 grid-cols-2 gap-x-3 gap-y-2 overflow-y-auto pr-1">
                     {props.availableTags.map((tag) => (
-                      <Field key={tag} orientation="horizontal">
+                      <div key={tag} className="inline-flex w-fit items-center gap-2">
                         <Checkbox
                           id={`filter-tag-${tag}`}
-                          checked={props.tagFilters.includes(tag)}
+                          checked={draftTagFilters.includes(tag)}
                           onCheckedChange={() => toggleTag(tag)}
                         />
-                        <FieldLabel
-                          htmlFor={`filter-tag-${tag}`}
-                          className="cursor-pointer font-normal"
-                        >
+                        <Label htmlFor={`filter-tag-${tag}`} className="w-fit cursor-pointer text-sm font-normal">
                           #{tag}
-                        </FieldLabel>
-                      </Field>
+                        </Label>
+                      </div>
                     ))}
                   </FieldGroup>
                 </FieldSet>
@@ -169,16 +186,16 @@ export function PostsFiltersBar(props: {
                 <FieldLegend variant="label">Período (agendamento)</FieldLegend>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <DatePicker
-                    value={props.dateRange.from}
-                    onSelect={(d) => props.onDateRangeChange({ ...props.dateRange, from: d })}
+                    value={draftDateRange.from}
+                    onSelect={(d) => setDraftDateRange({ ...draftDateRange, from: d })}
                     placeholder="De"
-                    triggerClassName="w-full sm:w-[140px]"
+                    triggerClassName="h-8 w-full px-3 text-sm sm:w-[152px]"
                   />
                   <DatePicker
-                    value={props.dateRange.to}
-                    onSelect={(d) => props.onDateRangeChange({ ...props.dateRange, to: d })}
+                    value={draftDateRange.to}
+                    onSelect={(d) => setDraftDateRange({ ...draftDateRange, to: d })}
                     placeholder="Até"
-                    triggerClassName="w-full sm:w-[140px]"
+                    triggerClassName="h-8 w-full px-3 text-sm sm:w-[152px]"
                   />
                 </div>
               </FieldSet>
@@ -189,10 +206,10 @@ export function PostsFiltersBar(props: {
               </FieldSet>
 
               <div className="flex justify-end gap-2 border-t pt-3">
-                <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                <Button variant="ghost" size="sm" onClick={clearDraftFilters}>
                   Limpar
                 </Button>
-                <Button size="sm" onClick={() => setPopoverOpen(false)}>
+                <Button size="sm" onClick={applyDraftFilters}>
                   Aplicar
                 </Button>
               </div>
@@ -205,11 +222,7 @@ export function PostsFiltersBar(props: {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground text-sm">Filtros:</span>
           {props.statusFilters.map((s) => (
-            <Badge
-              key={s}
-              variant="secondary"
-              className="gap-1 pr-1"
-            >
+            <Badge key={s} variant="secondary" className="gap-1 pr-1">
               {statusLabels[s]}
               <Button
                 type="button"
@@ -224,11 +237,7 @@ export function PostsFiltersBar(props: {
             </Badge>
           ))}
           {props.tagFilters.map((t) => (
-            <Badge
-              key={t}
-              variant="secondary"
-              className="gap-1 pr-1"
-            >
+            <Badge key={t} variant="secondary" className="gap-1 pr-1">
               #{t}
               <Button
                 type="button"

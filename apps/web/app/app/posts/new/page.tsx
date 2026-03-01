@@ -1,23 +1,37 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Page, PageActions, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
 import { type PreviewAspectRatio, type CropData } from "@/components/posts/post-preview-crop";
 import { StepHeader, type CreationStep } from "@/components/posts/create/step-header";
 import { StepSelectMedia, type MediaItem } from "@/components/posts/create/step-select-media";
 import { StepCropAdjust } from "@/components/posts/create/step-crop-adjust";
 import { StepCreatePost } from "@/components/posts/create/step-create-post";
-import { getNextQuarterSlotInTimeZone } from "@/lib/datetime";
+import {
+  buildUtcIsoFromRecifeSelection,
+  getCalendarDateAndTimeFromUtcRecife,
+  getNextQuarterSlotInTimeZone,
+} from "@/lib/datetime";
 import { useWorkspaceRole } from "@/hooks/use-workspace-role";
+import { cn } from "@/lib/utils";
 
 type MediaListResponse = { items: MediaItem[] };
 type PresignResponse = { mediaId: string; s3Key: string; uploadUrl: string };
@@ -31,8 +45,33 @@ function getErrorMessage(value: unknown) {
 
 export default function NewPostPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { role } = useWorkspaceRole();
+  const canManageApproval = role === "OWNER" || role === "ADMIN";
+  const prefilledScheduledAtUtc = useMemo(() => {
+    const directIso = searchParams.get("prefillScheduledAtUtc")?.trim();
+    if (directIso) {
+      const dt = new Date(directIso);
+      if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+    }
+
+    const date = searchParams.get("prefillDate")?.trim();
+    const time = searchParams.get("prefillTime")?.trim();
+    if (!date || !time) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!m) return null;
+    try {
+      const selectedDate = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0));
+      return buildUtcIsoFromRecifeSelection({
+        selectedDate,
+        timeHHmm: time,
+        timeZone: "America/Recife",
+      });
+    } catch {
+      return null;
+    }
+  }, [searchParams]);
 
   const [step, setStep] = useState<CreationStep>("select");
   const [title, setTitle] = useState("");
@@ -40,14 +79,22 @@ export default function NewPostPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [scheduledAtUtc, setScheduledAtUtc] = useState<string | null>(null);
+  const [scheduledAtUtc, setScheduledAtUtc] = useState<string | null>(prefilledScheduledAtUtc);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [pickedMediaId, setPickedMediaId] = useState<string | null>(null);
   const [previewAspect, setPreviewAspect] = useState<PreviewAspectRatio>("1:1");
   const [cropData, setCropData] = useState<CropData | null>(null);
+  const [transitionDirection, setTransitionDirection] = useState<"forward" | "backward">("forward");
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 
-  const scheduleDefault = useMemo(() => getNextQuarterSlotInTimeZone(), []);
+  const scheduleDefault = useMemo(() => {
+    if (scheduledAtUtc) {
+      const scheduled = getCalendarDateAndTimeFromUtcRecife(scheduledAtUtc, "America/Recife");
+      if (scheduled) return scheduled;
+    }
+    return getNextQuarterSlotInTimeZone();
+  }, [scheduledAtUtc]);
 
   const normalizedTitle = useMemo(() => title.replace(/\s+/g, " ").trim(), [title]);
   const normalizedCaption = useMemo(() => caption.replace(/\s+/g, " ").trim(), [caption]);
@@ -62,6 +109,16 @@ export default function NewPostPage() {
     },
     staleTime: 30_000,
   });
+
+  const transitionClass =
+    transitionDirection === "forward"
+      ? "animate-in fade-in-0 slide-in-from-right-3 duration-200"
+      : "animate-in fade-in-0 slide-in-from-left-3 duration-200";
+
+  function goToStep(next: CreationStep, direction: "forward" | "backward") {
+    setTransitionDirection(direction);
+    setStep(next);
+  }
 
   const uploadFromDeviceMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -92,6 +149,7 @@ export default function NewPostPage() {
     },
     onSuccess: (mediaId) => {
       setSelectedMediaId(mediaId);
+      goToStep("crop", "forward");
       queryClient.invalidateQueries({ queryKey: ["media"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Falha ao enviar imagem."),
@@ -101,18 +159,34 @@ export default function NewPostPage() {
   const selected = useMemo(() => media.find((m) => m.id === selectedMediaId) ?? null, [media, selectedMediaId]);
 
   function confirmLibraryPick() {
-    if (pickedMediaId) setSelectedMediaId(pickedMediaId);
     setLibraryDialogOpen(false);
   }
 
   function handleAdvance() {
-    if (step === "select") setStep("crop");
-    else if (step === "crop") setStep("create");
+    if (step === "select") goToStep("crop", "forward");
+    else if (step === "crop") goToStep("create", "forward");
   }
 
   function handleBack() {
-    if (step === "crop") setStep("select");
-    else if (step === "create") setStep("crop");
+    if (step === "crop") {
+      setDiscardDialogOpen(true);
+      return;
+    } else if (step === "create") {
+      goToStep("crop", "backward");
+    }
+  }
+
+  function discardAndRestart() {
+    setTitle("");
+    setCaption("");
+    setTags([]);
+    setSelectedMediaId(null);
+    setPickedMediaId(null);
+    setScheduledAtUtc(null);
+    setPreviewAspect("1:1");
+    setCropData(null);
+    setScheduleModalOpen(false);
+    goToStep("select", "backward");
   }
 
   async function savePost(asDraft: boolean) {
@@ -144,7 +218,7 @@ export default function NewPostPage() {
       body.saveAsDraft = true;
     } else {
       body.scheduledAtUtc = scheduledAtUtc;
-      if (role === "OWNER") {
+      if (canManageApproval) {
         body.directSchedule = true;
       }
     }
@@ -164,10 +238,10 @@ export default function NewPostPage() {
 
     if (asDraft) {
       toast.success("Rascunho salvo.");
-    } else if (role === "OWNER") {
+    } else if (canManageApproval) {
       toast.success("Post agendado.");
     } else {
-      toast.success("Post criado. Aguardando aprovação.");
+      toast.success("Post enviado para aprovação.");
     }
     router.replace("/app/posts");
   }
@@ -186,16 +260,10 @@ export default function NewPostPage() {
           </Button>
         </PageActions>
       </PageHeader>
-
-      <div className="mx-auto flex max-w-4xl items-start gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground mb-4">
-        <Info className="mt-0.5 size-4 shrink-0" />
-        <span>Por enquanto, apenas 1 imagem é permitida por post.</span>
-      </div>
-
       <div className="flex justify-center">
         {step === "create" ? (
-          <div className="w-full max-w-[1140px]">
-            <Card className="mb-4 p-4">
+          <div key="create" className={cn("w-full max-w-[1060px]", transitionClass)}>
+            <Card className="mb-3 px-3 py-1.5">
               <StepHeader
                 step={step}
                 canAdvance={false}
@@ -218,10 +286,16 @@ export default function NewPostPage() {
               saving={saving}
               onSaveDraft={() => void savePost(true)}
               onSchedulePost={() => void savePost(false)}
+              primaryActionLabel={canManageApproval ? "Agendar post" : "Enviar para aprovação"}
+              primaryActionHint={
+                canManageApproval
+                  ? "Será publicado automaticamente no horário definido."
+                  : "Será enviado para aprovação e só será agendado após aprovação."
+              }
             />
           </div>
         ) : (
-          <Card className="flex w-[732px] max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-hidden p-4">
+          <Card key={step} className={cn("flex w-[732px] max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-hidden p-4", transitionClass)}>
             <StepHeader
               step={step}
               canAdvance={canAdvance}
@@ -233,7 +307,10 @@ export default function NewPostPage() {
                 media={media}
                 mediaLoading={mediaQuery.isLoading}
                 selectedMediaId={selectedMediaId}
-                onSelectMedia={setSelectedMediaId}
+                onSelectMedia={(id) => {
+                  setSelectedMediaId(id);
+                  goToStep("crop", "forward");
+                }}
                 onUploadFile={(file) => uploadFromDeviceMutation.mutate(file)}
                 uploadPending={uploadFromDeviceMutation.isPending}
                 libraryDialogOpen={libraryDialogOpen}
@@ -267,6 +344,29 @@ export default function NewPostPage() {
         defaultTimeHHmm={scheduleDefault.time}
         onSelectScheduledAtUtc={setScheduledAtUtc}
       />
+
+      <AlertDialog open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar e recomeçar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voltar para a seleção de mídia vai descartar o post em criação. Você precisará começar novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                discardAndRestart();
+                setDiscardDialogOpen(false);
+              }}
+            >
+              Descartar e recomeçar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Page>
   );
 }
+

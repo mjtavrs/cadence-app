@@ -14,6 +14,7 @@ import { WeekCalendarView } from "./week-view";
 import { MonthInfiniteCalendarView } from "./month-infinite-view";
 
 export function CalendarClient(props: { initialWeek?: WeekBucket }) {
+  const [copiedPost, setCopiedPost] = useState<{ postId: string; title?: string; scheduledAtUtc?: string } | null>(null);
   const [view, setView] = useState<"week" | "month">("week");
   const [week, setWeek] = useState<WeekBucket>(
     props.initialWeek ?? getIsoWeekBucketRecife(new Date())
@@ -109,10 +110,16 @@ export function CalendarClient(props: { initialWeek?: WeekBucket }) {
       </PageHeader>
 
       {view === "week" ? (
-        <WeekCalendarView week={week} />
+        <WeekCalendarView
+          week={week}
+          copiedPost={copiedPost}
+          onCopyPost={setCopiedPost}
+        />
       ) : (
         <MonthInfiniteCalendarView
           initialMonth={monthBucket}
+          copiedPost={copiedPost}
+          onCopyPost={setCopiedPost}
           onActiveMonthChange={(m) => {
             setActiveMonth(m);
           }}

@@ -1,7 +1,7 @@
 import type { APIGatewayProxyHandler } from "aws-lambda";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
-import { canWrite } from "../../auth/rbac";
+import { canManageApproval } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import {
@@ -50,7 +50,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const membership = await assertWorkspaceMembership({ userId, workspaceId });
     if (!membership) return unauthorized("Sem acesso ao workspace.");
-    if (!canWrite(membership.role)) return unauthorized("Sem permissão para agendar posts.");
+    if (!canManageApproval(membership.role)) return unauthorized("Sem permissão para agendar posts.");
 
     const ddb = getDocClient();
     const tableName = getTableName();
