@@ -11,6 +11,7 @@ type MediaItemInput = {
   contentType?: string;
   sizeBytes?: number;
   fileName?: string;
+  folderId?: string | null;
 };
 
 type Body = {
@@ -40,7 +41,10 @@ export async function POST(req: Request) {
     body: JSON.stringify({
       workspaceId,
       folderId: typeof body.folderId === "string" ? body.folderId : null,
-      items: body.items,
+      items: body.items.map((item) => ({
+        ...item,
+        folderId: typeof item.folderId === "string" ? item.folderId : null,
+      })),
     }),
   });
 

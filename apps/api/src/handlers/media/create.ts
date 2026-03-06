@@ -1,5 +1,5 @@
 ﻿import type { APIGatewayProxyHandler } from "aws-lambda";
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { assertWorkspaceMembership } from "../../auth/workspace";
@@ -65,6 +65,34 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       );
 
       if (!folderRes.Item) return badRequest("Pasta nao encontrada.");
+    }
+
+    const existing = await ddb.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
+        ExpressionAttributeValues: {
+          ":pk": `WORKSPACE#${workspaceId}`,
+          ":skPrefix": "MEDIA#",
+        },
+        ProjectionExpression: "sizeBytes",
+        Limit: MEDIA.maxItemsPerWorkspace,
+      }),
+    );
+
+    const existingItems = existing.Items ?? [];
+    const existingCount = existingItems.length;
+    const existingBytes = existingItems.reduce((sum, item) => {
+      const size = (item as { sizeBytes?: unknown }).sizeBytes;
+      return sum + (typeof size === "number" ? size : 0);
+    }, 0);
+
+    if (existingCount >= MEDIA.maxItemsPerWorkspace) {
+      return badRequest(`Limite de ${MEDIA.maxItemsPerWorkspace} imagens atingido para este workspace.`);
+    }
+    if (existingBytes + sizeBytes > MEDIA.maxBytesPerWorkspace) {
+      const availableMb = Math.max(0, (MEDIA.maxBytesPerWorkspace - existingBytes) / (1024 * 1024));
+      return badRequest(`Limite de armazenamento atingido. Restam ${availableMb.toFixed(1)}MB disponiveis no workspace.`);
     }
 
     const createdAt = new Date().toISOString();

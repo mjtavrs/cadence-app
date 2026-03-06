@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useId, useRef, useState, useCallback, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -692,6 +693,9 @@ function DropZone(props: {
 }
 
 export function MediaClient(props: { initialItems?: MediaItem[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const media = useMediaLibrary({ initialItems: props.initialItems });
   const selection = useMediaSelection();
 
@@ -788,6 +792,17 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
   );
   const isCurrentFolderEmpty = visibleFoldersWithOptimistic.length === 0 && visibleMediaItems.length === 0;
 
+  const navigateToFolder = useCallback(
+    (folderId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (folderId) params.set("folderId", folderId);
+      else params.delete("folderId");
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
+
   useEffect(() => {
     if (selectedFolderId && !folderById.has(selectedFolderId)) {
       setSelectedFolderId(null);
@@ -797,8 +812,32 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
   useEffect(() => {
     if (currentFolderId && !folderById.has(currentFolderId)) {
       setCurrentFolderId(null);
+      navigateToFolder(null);
     }
-  }, [folderById, currentFolderId]);
+  }, [folderById, currentFolderId, navigateToFolder]);
+
+  useEffect(() => {
+    const folderIdFromUrl = searchParams.get("folderId");
+    if (!folderIdFromUrl) {
+      if (currentFolderId !== null) setCurrentFolderId(null);
+      return;
+    }
+    if (folderById.has(folderIdFromUrl)) {
+      if (currentFolderId !== folderIdFromUrl) setCurrentFolderId(folderIdFromUrl);
+      return;
+    }
+    if (!media.isLoadingFolders && !media.isFetchingFolders) {
+      setCurrentFolderId(null);
+      navigateToFolder(null);
+    }
+  }, [
+    searchParams,
+    folderById,
+    currentFolderId,
+    media.isLoadingFolders,
+    media.isFetchingFolders,
+    navigateToFolder,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -811,6 +850,10 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
   useEffect(() => {
     selection.clearSelection();
   }, [currentFolderId, typeFilter, uploadDateFilter, selection.clearSelection]);
+
+  useEffect(() => {
+    void media.refetchMedia();
+  }, [currentFolderId, media.refetchMedia]);
 
   useEffect(() => {
     if (!isCreateFolderOpen) return;
@@ -1137,6 +1180,7 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
       await media.deleteFolder(target.id);
       if (currentFolderId === target.id) {
         setCurrentFolderId(target.parentFolderId ?? null);
+        navigateToFolder(target.parentFolderId ?? null);
       }
       if (selectedFolderId === target.id) {
         setSelectedFolderId(null);
@@ -1247,10 +1291,11 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
                             isBreadcrumbDropTarget && "border-primary/40 bg-primary/10 opacity-100",
                           )}
                           onClick={() => {
-                            setCurrentFolderId(node.id);
-                            setSelectedFolderId(null);
-                          }}
-                        >
+                          setCurrentFolderId(node.id);
+                          setSelectedFolderId(null);
+                          navigateToFolder(node.id);
+                        }}
+                      >
                           {node.name}
                         </button>
                       </BreadcrumbLink>
@@ -1463,6 +1508,7 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
                         if (id.startsWith("temp-folder-")) return;
                         setCurrentFolderId(id);
                         setSelectedFolderId(null);
+                        navigateToFolder(id);
                       }}
                       onRequestRenameFolder={openRenameFolderDialog}
                       onRequestDeleteFolder={setDeleteFolderTarget}

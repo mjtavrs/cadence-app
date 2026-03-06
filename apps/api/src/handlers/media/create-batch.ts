@@ -1,11 +1,13 @@
-﻿import type { APIGatewayProxyHandler } from "aws-lambda";
-import { BatchWriteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import type { APIGatewayProxyHandler } from "aws-lambda";
+import { BatchWriteCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 import { MEDIA } from "../../media/limits";
+import { normalizeFileName } from "../../media/names";
+import { deleteObject } from "../../media/s3";
 
 type MediaItemInput = {
   mediaId?: string;
@@ -13,15 +15,40 @@ type MediaItemInput = {
   contentType?: string;
   sizeBytes?: number;
   fileName?: string;
+  folderId?: string | null;
 };
 
 type CreateBatchBody = {
   workspaceId?: string;
   folderId?: string | null;
   items?: MediaItemInput[];
+  dedupeMode?: "replace_by_name_ext";
 };
 
 const MAX_ITEMS_PER_BATCH = 25;
+const REPLACE_BY_NAME_EXT = "replace_by_name_ext";
+
+type ExistingMediaRow = {
+  PK: string;
+  SK: string;
+  mediaId: string;
+  s3Key: string;
+  fileName?: string | null;
+  folderId?: string | null;
+  sizeBytes?: number;
+};
+
+function makeFileKey(folderId: string | null, fileName: string) {
+  return `${folderId ?? "ROOT"}::${normalizeFileName(fileName)}`;
+}
+
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
@@ -35,7 +62,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   }
 
   const workspaceId = body.workspaceId?.trim();
-  const folderId = typeof body.folderId === "string" ? body.folderId.trim() : null;
+  const fallbackFolderId = typeof body.folderId === "string" ? body.folderId.trim() : null;
+  const dedupeMode = body.dedupeMode === REPLACE_BY_NAME_EXT ? REPLACE_BY_NAME_EXT : null;
   const items = body.items ?? [];
 
   if (!workspaceId) return badRequest("workspaceId e obrigatorio.");
@@ -54,6 +82,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const s3Key = item?.s3Key?.trim();
     const contentType = item?.contentType?.trim();
     const sizeBytes = item?.sizeBytes;
+    const resolvedFolderId = typeof item?.folderId === "string" ? item.folderId.trim() : fallbackFolderId;
 
     if (!mediaId) {
       errors.push({ mediaId: item?.mediaId ?? "unknown", message: "mediaId e obrigatorio." });
@@ -72,7 +101,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       continue;
     }
 
-    validItems.push(item);
+    validItems.push({
+      ...item,
+      folderId: resolvedFolderId || null,
+    });
   }
 
   if (validItems.length === 0) {
@@ -89,7 +121,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const ddb = getDocClient();
     const tableName = getTableName();
 
-    if (folderId) {
+    const folderIds = [
+      ...new Set(
+        validItems
+          .map((item) => (typeof item.folderId === "string" ? item.folderId.trim() : null))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    for (const folderId of folderIds) {
       const folderRes = await ddb.send(
         new GetCommand({
           TableName: tableName,
@@ -104,6 +143,59 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       if (!folderRes.Item) return badRequest("Pasta nao encontrada.");
     }
 
+    const existingQuery = await ddb.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
+        ExpressionAttributeValues: {
+          ":pk": `WORKSPACE#${workspaceId}`,
+          ":skPrefix": "MEDIA#",
+        },
+        ProjectionExpression: "PK, SK, mediaId, s3Key, fileName, folderId, sizeBytes",
+        Limit: MEDIA.maxItemsPerWorkspace,
+      }),
+    );
+
+    const existingItems = (existingQuery.Items ?? []) as ExistingMediaRow[];
+    const existingCount = existingItems.length;
+    const existingBytes = existingItems.reduce((sum, item) => {
+      const size = (item as { sizeBytes?: unknown }).sizeBytes;
+      return sum + (typeof size === "number" ? size : 0);
+    }, 0);
+    const incomingCount = validItems.length;
+    const incomingBytes = validItems.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0);
+
+    if (existingCount + incomingCount > MEDIA.maxItemsPerWorkspace) {
+      const available = Math.max(0, MEDIA.maxItemsPerWorkspace - existingCount);
+      return badRequest(
+        `Limite de ${MEDIA.maxItemsPerWorkspace} imagens atingido. Voce pode fazer upload de ${available} arquivo(s).`,
+      );
+    }
+    if (existingBytes + incomingBytes > MEDIA.maxBytesPerWorkspace) {
+      const availableMb = Math.max(0, (MEDIA.maxBytesPerWorkspace - existingBytes) / (1024 * 1024));
+      return badRequest(`Limite de armazenamento atingido. Restam ${availableMb.toFixed(1)}MB disponiveis no workspace.`);
+    }
+
+    const replacementsByNewMediaId = new Map<string, ExistingMediaRow>();
+    if (dedupeMode === REPLACE_BY_NAME_EXT) {
+      const existingByFolderAndName = new Map<string, ExistingMediaRow>();
+      for (const existingItem of existingItems) {
+        if (!existingItem.fileName?.trim()) continue;
+        existingByFolderAndName.set(makeFileKey(existingItem.folderId ?? null, existingItem.fileName), existingItem);
+      }
+
+      for (const item of validItems) {
+        const mediaId = item.mediaId?.trim();
+        const incomingFileName = item.fileName?.trim();
+        if (!mediaId || !incomingFileName) continue;
+
+        const existingMatch = existingByFolderAndName.get(makeFileKey(item.folderId ?? null, incomingFileName));
+        if (existingMatch) {
+          replacementsByNewMediaId.set(mediaId, existingMatch);
+        }
+      }
+    }
+
     const createdAt = new Date().toISOString();
 
     const writeRequests = validItems.map((item) => ({
@@ -116,7 +208,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           contentType: item.contentType,
           sizeBytes: item.sizeBytes,
           fileName: item.fileName?.trim() || null,
-          folderId,
+          folderId: item.folderId ?? null,
           s3Key: item.s3Key,
           createdAt,
         },
@@ -162,6 +254,59 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       created: Array<{ mediaId: string }>;
       errors?: Array<{ mediaId: string; message: string }>;
     } = { created };
+
+    if (created.length > 0 && replacementsByNewMediaId.size > 0) {
+      const createdIds = new Set(created.map((item) => item.mediaId));
+      const rowsToDelete = Array.from(replacementsByNewMediaId.entries())
+        .filter(([newMediaId]) => createdIds.has(newMediaId))
+        .map(([, row]) => row);
+      const uniqueRowsToDelete = Array.from(new Map(rowsToDelete.map((row) => [row.mediaId, row])).values());
+
+      for (const rowsChunk of chunk(uniqueRowsToDelete, MAX_ITEMS_PER_BATCH)) {
+        const deleteRequests = rowsChunk.map((row) => ({
+          DeleteRequest: {
+            Key: {
+              PK: row.PK,
+              SK: row.SK,
+            },
+          },
+        }));
+
+        const deleteResult = await ddb.send(
+          new BatchWriteCommand({
+            RequestItems: {
+              [tableName]: deleteRequests,
+            },
+          }),
+        );
+
+        const unprocessed = deleteResult.UnprocessedItems?.[tableName] ?? [];
+        const unprocessedKeys = new Set(
+          unprocessed
+            .map((req) => `${req.DeleteRequest?.Key?.PK ?? ""}::${req.DeleteRequest?.Key?.SK ?? ""}`)
+            .filter(Boolean),
+        );
+
+        for (const row of rowsChunk) {
+          const key = `${row.PK}::${row.SK}`;
+          if (unprocessedKeys.has(key)) {
+            errors.push({
+              mediaId: row.mediaId,
+              message: "Falha ao substituir item antigo. Tente novamente.",
+            });
+            continue;
+          }
+          try {
+            await deleteObject({ key: row.s3Key });
+          } catch {
+            errors.push({
+              mediaId: row.mediaId,
+              message: "Item antigo removido do catalogo, mas falhou ao remover arquivo no storage.",
+            });
+          }
+        }
+      }
+    }
 
     if (errors.length > 0) {
       response.errors = errors;

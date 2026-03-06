@@ -58,7 +58,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       itemsUsed,
       itemsLimit: MEDIA.maxItemsPerWorkspace,
       bytesUsed,
-      bytesLimit: MEDIA.maxItemsPerWorkspace * MEDIA.maxBytes,
+      bytesLimit: MEDIA.maxBytesPerWorkspace,
     });
   } catch (err: any) {
     const name = err?.name as string | undefined;

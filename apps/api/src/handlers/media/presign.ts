@@ -63,7 +63,6 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const ddb = getDocClient();
     const tableName = getTableName();
 
-    // limite de 30: query com limit 30; se veio 30, bloqueia novos.
     const existing = await ddb.send(
       new QueryCommand({
         TableName: tableName,
@@ -72,12 +71,26 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           ":pk": `WORKSPACE#${workspaceId}`,
           ":skPrefix": "MEDIA#",
         },
+        ProjectionExpression: "sizeBytes",
         Limit: MEDIA.maxItemsPerWorkspace,
       }),
     );
 
-    if ((existing.Items?.length ?? 0) >= MEDIA.maxItemsPerWorkspace) {
-      return badRequest("Limite de 30 imagens atingido para este workspace.");
+    const existingItems = existing.Items ?? [];
+    const existingCount = existingItems.length;
+    const existingBytes = existingItems.reduce((sum, item) => {
+      const size = (item as { sizeBytes?: unknown }).sizeBytes;
+      return sum + (typeof size === "number" ? size : 0);
+    }, 0);
+
+    if (existingCount >= MEDIA.maxItemsPerWorkspace) {
+      return badRequest(`Limite de ${MEDIA.maxItemsPerWorkspace} imagens atingido para este workspace.`);
+    }
+    if (existingBytes + sizeBytes > MEDIA.maxBytesPerWorkspace) {
+      const availableMb = Math.max(0, (MEDIA.maxBytesPerWorkspace - existingBytes) / (1024 * 1024));
+      return badRequest(
+        `Limite de armazenamento atingido. Restam ${availableMb.toFixed(1)}MB disponíveis no workspace.`,
+      );
     }
 
     const id = randomId();

@@ -18,7 +18,7 @@ type PresignBatchBody = {
   files?: FileInput[];
 };
 
-const MAX_FILES_PER_BATCH = 10;
+const MAX_FILES_PER_BATCH = 25;
 
 function safeExtFromContentType(contentType: string) {
   const map: Record<string, string> = {
@@ -103,17 +103,30 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           ":pk": `WORKSPACE#${workspaceId}`,
           ":skPrefix": "MEDIA#",
         },
+        ProjectionExpression: "sizeBytes",
         Limit: MEDIA.maxItemsPerWorkspace,
       }),
     );
 
-    const existingCount = existing.Items?.length ?? 0;
+    const existingItems = existing.Items ?? [];
+    const existingCount = existingItems.length;
+    const existingBytes = existingItems.reduce((sum, item) => {
+      const size = (item as { sizeBytes?: unknown }).sizeBytes;
+      return sum + (typeof size === "number" ? size : 0);
+    }, 0);
     const totalAfterBatch = existingCount + validFiles.length;
+    const incomingBytes = validFiles.reduce((sum, file) => sum + (file.file.sizeBytes ?? 0), 0);
 
     if (totalAfterBatch > MEDIA.maxItemsPerWorkspace) {
       const available = MEDIA.maxItemsPerWorkspace - existingCount;
       return json(400, {
         message: `Limite de ${MEDIA.maxItemsPerWorkspace} imagens atingido. Você pode fazer upload de ${available} arquivo(s).`,
+      });
+    }
+    if (existingBytes + incomingBytes > MEDIA.maxBytesPerWorkspace) {
+      const availableMb = Math.max(0, (MEDIA.maxBytesPerWorkspace - existingBytes) / (1024 * 1024));
+      return json(400, {
+        message: `Limite de armazenamento atingido. Restam ${availableMb.toFixed(1)}MB disponíveis no workspace.`,
       });
     }
 

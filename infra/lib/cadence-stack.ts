@@ -218,6 +218,11 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const resolveMediaFoldersTreeFn = new NodejsFunction(this, "ResolveMediaFoldersTreeFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/folders-resolve-tree.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const renameMediaFolderFn = new NodejsFunction(this, "RenameMediaFolderFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/folders-rename.ts"),
       ...apiHandlerDefaults,
@@ -339,6 +344,7 @@ export class CadenceStack extends Stack {
       mediaSummaryFn,
       listMediaFoldersFn,
       createMediaFolderFn,
+      resolveMediaFoldersTreeFn,
       renameMediaFolderFn,
       deleteMediaFolderFn,
       deleteMediaFn,
@@ -382,6 +388,7 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(mediaSummaryFn);
     appTable.grantReadWriteData(listMediaFoldersFn);
     appTable.grantReadWriteData(createMediaFolderFn);
+    appTable.grantReadWriteData(resolveMediaFoldersTreeFn);
     appTable.grantReadWriteData(renameMediaFolderFn);
     appTable.grantReadWriteData(deleteMediaFolderFn);
     appTable.grantReadWriteData(deleteMediaFn);
@@ -455,6 +462,7 @@ export class CadenceStack extends Stack {
     const mediaFolders = media.addResource("folders");
     mediaFolders.addMethod("GET", new apigateway.LambdaIntegration(listMediaFoldersFn));
     mediaFolders.addMethod("POST", new apigateway.LambdaIntegration(createMediaFolderFn));
+    mediaFolders.addResource("resolve-tree").addMethod("POST", new apigateway.LambdaIntegration(resolveMediaFoldersTreeFn));
     const mediaFolderById = mediaFolders.addResource("{id}");
     mediaFolderById.addMethod("PATCH", new apigateway.LambdaIntegration(renameMediaFolderFn));
     mediaFolderById.addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFolderFn));

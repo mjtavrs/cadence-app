@@ -75,6 +75,8 @@ function getErrorMessage(value: unknown) {
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 const maxBytes = 10 * 1024 * 1024;
+const MAX_ITEMS_PER_WORKSPACE = 150;
+const MAX_BATCH_UPLOAD_SIZE = 25;
 
 function uploadFileWithProgress(
   url: string,
@@ -163,7 +165,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
   const items = mediaQuery.data ?? [];
   const folders = foldersQuery.data ?? [];
-  const canUpload = useMemo(() => items.length < 30, [items.length]);
+  const canUpload = useMemo(() => items.length < MAX_ITEMS_PER_WORKSPACE, [items.length]);
 
   const uploadMutation = useMutation({
     mutationFn: async (params: { file: File; folderId?: string | null }) => {
@@ -362,7 +364,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       return;
     }
     if (!canUpload) {
-      setError("Limite de 30 imagens atingido para este workspace.");
+      setError(`Limite de ${MAX_ITEMS_PER_WORKSPACE} imagens atingido para este workspace.`);
       return;
     }
 
@@ -428,10 +430,10 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       return;
     }
 
-    const availableSlots = 30 - items.length;
+    const availableSlots = Math.max(0, MAX_ITEMS_PER_WORKSPACE - items.length);
     if (validFiles.length > availableSlots) {
       setError(
-        `Limite de 30 imagens atingido. VocÃª pode fazer upload de ${availableSlots} arquivo(s).`,
+        `Limite de ${MAX_ITEMS_PER_WORKSPACE} imagens atingido. VocÃª pode fazer upload de ${availableSlots} arquivo(s).`,
       );
       for (const { fileId } of validFiles) {
         progressMap.set(fileId, {
@@ -447,23 +449,29 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     }
 
     try {
-      const presignRes = await fetch("/api/media/presign/batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          files: validFiles.map(({ file }) => ({
-            contentType: file.type,
-            fileName: file.name,
-            sizeBytes: file.size,
-          })),
-        }),
-      });
+      let hadSuccessfulUpload = false;
+      const folderId = options?.folderId ?? null;
 
-      const presignPayload = (await presignRes.json().catch(() => null)) as unknown;
-      if (!presignRes.ok) {
-        const errorMsg = getErrorMessage(presignPayload) ?? "Falha ao preparar upload.";
-        setError(errorMsg);
-        for (const { fileId } of validFiles) {
+      for (let start = 0; start < validFiles.length; start += MAX_BATCH_UPLOAD_SIZE) {
+        const chunk = validFiles.slice(start, start + MAX_BATCH_UPLOAD_SIZE);
+
+        const presignRes = await fetch("/api/media/presign/batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            files: chunk.map(({ file }) => ({
+              contentType: file.type,
+              fileName: file.name,
+              sizeBytes: file.size,
+            })),
+          }),
+        });
+
+        const presignPayload = (await presignRes.json().catch(() => null)) as unknown;
+        if (!presignRes.ok) {
+          const errorMsg = getErrorMessage(presignPayload) ?? "Falha ao preparar upload.";
+          setError(errorMsg);
+          for (const { fileId } of chunk) {
             progressMap.set(fileId, {
               fileId,
               fileName: progressMap.get(fileId)?.fileName ?? "",
@@ -471,17 +479,18 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
               progress: 0,
               error: errorMsg,
             });
+          }
+          setUploadProgress(new Map(progressMap));
+          continue;
         }
-        setUploadProgress(new Map(progressMap));
-        return;
-      }
 
-      const presignData = presignPayload as PresignBatchResponse;
+        const presignData = presignPayload as PresignBatchResponse;
+        const filesByChunkIndex = new Map(chunk.map((item, idx) => [idx, item] as const));
 
-      if (presignData.errors && presignData.errors.length > 0) {
-        for (const err of presignData.errors) {
-          const validFile = validFiles.find((f) => f.index === err.index);
-          if (validFile) {
+        if (presignData.errors && presignData.errors.length > 0) {
+          for (const err of presignData.errors) {
+            const validFile = filesByChunkIndex.get(err.index);
+            if (!validFile) continue;
             progressMap.set(validFile.fileId, {
               fileId: validFile.fileId,
               fileName: validFile.file.name,
@@ -490,117 +499,145 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
               error: err.message,
             });
           }
+          setUploadProgress(new Map(progressMap));
         }
-      }
 
-      const uploadPromises = presignData.presigns.map(async (presign) => {
-        const validFile = validFiles.find((f) => f.index === presign.index);
-        if (!validFile) return null;
+        const uploadPromises = presignData.presigns.map(async (presign) => {
+          const validFile = filesByChunkIndex.get(presign.index);
+          if (!validFile) return null;
 
-        const fileId = validFile.fileId;
-        const abortController = new AbortController();
-        abortControllersRef.current.set(fileId, abortController);
+          const fileId = validFile.fileId;
+          const abortController = new AbortController();
+          abortControllersRef.current.set(fileId, abortController);
 
-        progressMap.set(fileId, {
-          fileId,
-          fileName: validFile.file.name,
-          status: "uploading",
-          progress: 0,
-          abortController,
-        });
-        setUploadProgress(new Map(progressMap));
-
-        try {
-          const uploadResult = await uploadFileWithProgress(
-            presign.uploadUrl,
-            validFile.file,
-            abortController.signal,
-            (progress) => {
-              progressMap.set(fileId, {
-                fileId,
-                fileName: validFile.file.name,
-                status: "uploading",
-                progress,
-                abortController,
-              });
-              setUploadProgress(new Map(progressMap));
-            },
-          );
-
-          if (!uploadResult.ok) {
-            throw new Error("Falha no upload para o S3.");
-          }
-
-          abortControllersRef.current.delete(fileId);
           progressMap.set(fileId, {
             fileId,
             fileName: validFile.file.name,
-            status: "success",
-            progress: 100,
+            status: "uploading",
+            progress: 0,
+            abortController,
           });
           setUploadProgress(new Map(progressMap));
 
-          return {
-            mediaId: presign.mediaId,
-            s3Key: presign.s3Key,
-            contentType: validFile.file.type,
-            sizeBytes: validFile.file.size,
-            fileName: validFile.file.name,
-          };
-        } catch (e) {
-          abortControllersRef.current.delete(fileId);
-          if (e instanceof Error && e.name === "AbortError") {
+          try {
+            const uploadResult = await uploadFileWithProgress(
+              presign.uploadUrl,
+              validFile.file,
+              abortController.signal,
+              (progress) => {
+                progressMap.set(fileId, {
+                  fileId,
+                  fileName: validFile.file.name,
+                  status: "uploading",
+                  progress,
+                  abortController,
+                });
+                setUploadProgress(new Map(progressMap));
+              },
+            );
+
+            if (!uploadResult.ok) {
+              throw new Error("Falha no upload para o S3.");
+            }
+
+            abortControllersRef.current.delete(fileId);
             progressMap.set(fileId, {
               fileId,
               fileName: validFile.file.name,
-              status: "cancelled",
-              progress: progressMap.get(fileId)?.progress ?? 0,
+              status: "success",
+              progress: 100,
             });
-          } else {
-            progressMap.set(fileId, {
+            setUploadProgress(new Map(progressMap));
+
+            return {
               fileId,
+              mediaId: presign.mediaId,
+              s3Key: presign.s3Key,
+              contentType: validFile.file.type,
+              sizeBytes: validFile.file.size,
               fileName: validFile.file.name,
+              folderId,
+            };
+          } catch (e) {
+            abortControllersRef.current.delete(fileId);
+            if (e instanceof Error && e.name === "AbortError") {
+              progressMap.set(fileId, {
+                fileId,
+                fileName: validFile.file.name,
+                status: "cancelled",
+                progress: progressMap.get(fileId)?.progress ?? 0,
+              });
+            } else {
+              progressMap.set(fileId, {
+                fileId,
+                fileName: validFile.file.name,
+                status: "error",
+                progress: progressMap.get(fileId)?.progress ?? 0,
+                error: e instanceof Error ? e.message : "Falha no upload.",
+              });
+            }
+            setUploadProgress(new Map(progressMap));
+            return null;
+          }
+        });
+
+        const uploadResults = await Promise.all(uploadPromises);
+        const successfulUploads = uploadResults.filter((r): r is NonNullable<typeof r> => r !== null);
+
+        if (successfulUploads.length === 0) {
+          continue;
+        }
+        hadSuccessfulUpload = true;
+
+        const createRes = await fetch("/api/media/batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            folderId,
+            items: successfulUploads.map(({ fileId: _ignored, ...item }) => item),
+          }),
+        });
+
+        const createPayload = (await createRes.json().catch(() => null)) as unknown;
+        if (!createRes.ok) {
+          const errorMsg = getErrorMessage(createPayload) ?? "Falha ao registrar mídia.";
+          setError(errorMsg);
+          for (const upload of successfulUploads) {
+            progressMap.set(upload.fileId, {
+              fileId: upload.fileId,
+              fileName: upload.fileName,
               status: "error",
-              progress: progressMap.get(fileId)?.progress ?? 0,
-              error: e instanceof Error ? e.message : "Falha no upload.",
+              progress: 100,
+              error: errorMsg,
             });
           }
           setUploadProgress(new Map(progressMap));
-          return null;
+          continue;
         }
-      });
 
-      const uploadResults = await Promise.all(uploadPromises);
-      const successfulUploads = uploadResults.filter(
-        (r): r is NonNullable<typeof r> => r !== null,
-      );
-
-      if (successfulUploads.length === 0) {
-        setError("Nenhum arquivo foi enviado com sucesso.");
-        return;
+        const createData = createPayload as CreateBatchResponse;
+        if (createData.errors && createData.errors.length > 0) {
+          const uploadByMediaId = new Map(successfulUploads.map((item) => [item.mediaId, item] as const));
+          for (const err of createData.errors) {
+            const failed = uploadByMediaId.get(err.mediaId);
+            if (!failed) continue;
+            progressMap.set(failed.fileId, {
+              fileId: failed.fileId,
+              fileName: failed.fileName,
+              status: "error",
+              progress: 100,
+              error: err.message,
+            });
+          }
+          setUploadProgress(new Map(progressMap));
+          const errorMessages = createData.errors.map((e) => e.message).join("\n");
+          toast.error(`Alguns arquivos falharam ao serem registrados:\n${errorMessages}`);
+        }
       }
 
-      const createRes = await fetch("/api/media/batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          folderId: options?.folderId ?? null,
-          items: successfulUploads,
-        }),
-      });
-
-      const createPayload = (await createRes.json().catch(() => null)) as unknown;
-      if (!createRes.ok) {
-        const errorMsg = getErrorMessage(createPayload) ?? "Falha ao registrar mÃ­dia.";
-        setError(errorMsg);
+      if (!hadSuccessfulUpload) {
+        setError((prev) => prev ?? "Nenhum arquivo foi enviado com sucesso.");
         return;
-      }
-
-      const createData = createPayload as CreateBatchResponse;
-
-      if (createData.errors && createData.errors.length > 0) {
-        const errorMessages = createData.errors.map((e) => e.message).join("\n");
-        toast.error(`Alguns arquivos falharam ao serem registrados:\n${errorMessages}`);
       }
 
       await refreshMediaQueries();
@@ -763,6 +800,8 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     isFetching: mediaQuery.isFetching,
     isLoadingFolders: foldersQuery.isLoading,
     isFetchingFolders: foldersQuery.isFetching,
+    refetchMedia: mediaQuery.refetch,
+    refetchFolders: foldersQuery.refetch,
     uploadPending: uploadMutation.isPending,
     deletingIds,
     uploadProgress: Array.from(uploadProgress.values()),
