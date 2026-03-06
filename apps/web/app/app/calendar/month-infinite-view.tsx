@@ -246,6 +246,33 @@ export function MonthInfiniteCalendarView(props: {
 
   const todayKey = useMemo(() => dayKeyFromUtcDate(new Date()), []);
 
+  function clearSelectedEvent() {
+    setSelectedEventId(null);
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.dataset.eventChip === "true") {
+      active.blur();
+    }
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") clearSelectedEvent();
+    };
+
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-event-chip="true"]')) return;
+      clearSelectedEvent();
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("mousedown", onPointerDown, true);
+    };
+  }, []);
+
   const grouped = useMemo(() => {
     const map = new Map<string, CalendarMonthPost[]>();
     for (const p of allItems) {
@@ -496,6 +523,7 @@ export function MonthInfiniteCalendarView(props: {
                               >
                                 <button
                                   type="button"
+                                  data-event-chip="true"
                                   onClick={() => setSelectedEventId(post.postId)}
                                   className={cn(
                                     "group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left",
@@ -570,6 +598,7 @@ export function MonthInfiniteCalendarView(props: {
                 >
                   <button
                     type="button"
+                    data-event-chip="true"
                     onClick={() => setSelectedEventId(p.postId)}
                     className={cn(
                       "group flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-2 text-left",

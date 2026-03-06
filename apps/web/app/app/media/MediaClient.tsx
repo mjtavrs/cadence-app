@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useId, useRef, useState, useCallback } from "react";
+import { useEffect, useId, useRef, useState, useCallback, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,20 +47,34 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useMediaLibrary, type MediaItem } from "@/hooks/use-media-library";
+import {
+  useMediaLibrary,
+  type MediaItem,
+  type MediaFolder,
+} from "@/hooks/use-media-library";
 import { UploadProgressPanel } from "@/components/media/upload-progress-panel";
 import { SelectionOverlay } from "@/components/media/selection-overlay";
 import { MediaDetailsSheet } from "@/components/media/media-details-sheet";
 import { useMediaSelection } from "@/hooks/use-media-selection";
-import { ImageIcon, TrashIcon, HelpCircle, Eye, Pencil, Info, Loader2 } from "lucide-react";
-import { FaImage, FaVideo } from "react-icons/fa";
+import { ImageIcon, TrashIcon, HelpCircle, Eye, Pencil, Info, Loader2, ChevronDown } from "lucide-react";
+import { FaChevronRight, FaImage, FaVideo } from "react-icons/fa";
+import { FiFolder, FiFolderPlus } from "react-icons/fi";
+import { LuImagePlus, LuPencilLine } from "react-icons/lu";
 import { SlOptionsVertical } from "react-icons/sl";
 import { Input } from "@/components/ui/input";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const HELP_MESSAGE =
-  "Se a imagem não aparecer, seu navegador pode não suportar esse formato (ex.: HEIC em alguns navegadores).";
+  "Se a imagem nÃ£o aparecer, seu navegador pode nÃ£o suportar esse formato (ex.: HEIC em alguns navegadores).";
 
 export function MediaUploadAction(props: { initialItems?: MediaItem[] }) {
   const media = useMediaLibrary({ initialItems: props.initialItems });
@@ -133,26 +147,93 @@ function isVideoType(contentType: string) {
 }
 
 const DRAG_THRESHOLD_PX = 5;
+const INTERNAL_MEDIA_DRAG_TYPE = "application/x-cadence-media-ids";
+type MediaTypeFilter = "all" | "image" | "video";
+type UploadDateFilter = "all" | "today" | "yesterday" | "last7days" | "lastMonth";
+const BREADCRUMB_ROOT_DROP_KEY = "__root__";
+
+type BreadcrumbNode = {
+  id: string | null;
+  name: string;
+};
+
+function matchesMediaType(item: MediaItem, filter: MediaTypeFilter) {
+  if (filter === "all") return true;
+  if (filter === "image") return isImageType(item.contentType);
+  if (filter === "video") return isVideoType(item.contentType);
+  return true;
+}
+
+function matchesUploadDate(item: MediaItem, filter: UploadDateFilter) {
+  if (filter === "all") return true;
+
+  const createdAt = new Date(item.createdAt);
+  if (Number.isNaN(createdAt.getTime())) return false;
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const last7Start = new Date(todayStart);
+  last7Start.setDate(last7Start.getDate() - 6);
+  const lastMonthStart = new Date(todayStart);
+  lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
+
+  if (filter === "today") return createdAt >= todayStart;
+  if (filter === "yesterday") return createdAt >= yesterdayStart && createdAt < todayStart;
+  if (filter === "last7days") return createdAt >= last7Start;
+  if (filter === "lastMonth") return createdAt >= lastMonthStart;
+
+  return true;
+}
+
+function buildBreadcrumbPath(folders: MediaFolder[], currentFolderId: string | null): BreadcrumbNode[] {
+  const byId = new Map(folders.map((folder) => [folder.id, folder] as const));
+  const nodes: BreadcrumbNode[] = [{ id: null, name: "Biblioteca de mídia" }];
+  if (!currentFolderId) return nodes;
+
+  const chain: MediaFolder[] = [];
+  let cursor = byId.get(currentFolderId) ?? null;
+  const guard = new Set<string>();
+
+  while (cursor && !guard.has(cursor.id)) {
+    chain.push(cursor);
+    guard.add(cursor.id);
+    cursor = cursor.parentFolderId ? (byId.get(cursor.parentFolderId) ?? null) : null;
+  }
+
+  chain.reverse().forEach((folder) => {
+    nodes.push({ id: folder.id, name: folder.name });
+  });
+
+  return nodes;
+}
 
 function MediaGrid(props: {
   items: MediaItem[];
-  deletingId: string | null;
+  deletingIds: Set<string>;
   uploadPending?: boolean;
   selectedIds: Set<string>;
+  draggedIds: Set<string>;
+  movingIds: Set<string>;
   didDragRef?: React.MutableRefObject<boolean>;
   onItemClick(item: MediaItem, e: React.MouseEvent, mode: "normal" | "add" | "range"): void;
   onRequestView(item: MediaItem): void;
   onRequestRename(item: MediaItem): void;
   onRequestDelete(id: string, fileName: string | null): void;
   onRequestDetails(item: MediaItem): void;
+  onDragStart(item: MediaItem, event: React.DragEvent<HTMLButtonElement>): void;
+  onDragEnd(): void;
   cardRefs?: React.MutableRefObject<Map<string, HTMLDivElement>>;
 }) {
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
       {props.items.map((m) => {
-        const isDeleting = props.deletingId === m.id;
+        const isDeleting = props.deletingIds.has(m.id);
         const isSelected = props.selectedIds.has(m.id);
+        const isBeingDragged = props.draggedIds.has(m.id);
+        const isBeingMoved = props.movingIds.has(m.id);
         return (
           <ContextMenu
             key={m.id}
@@ -164,6 +245,7 @@ function MediaGrid(props: {
           >
             <ContextMenuTrigger asChild>
               <Card
+                data-media-card="true"
                 ref={(el) => {
                   if (el && props.cardRefs) props.cardRefs.current.set(m.id, el);
                   else if (props.cardRefs) props.cardRefs.current.delete(m.id);
@@ -171,13 +253,21 @@ function MediaGrid(props: {
                 className={cn(
                   "overflow-hidden gap-0 p-0 transition-all select-none cursor-pointer",
                   isSelected && "ring-2 ring-primary ring-offset-2",
+                  isBeingDragged && "opacity-60 border-dashed",
+                  isBeingMoved && "opacity-60 border-dashed",
                 )}
               >
                 <button
                   type="button"
+                  data-media-item="true"
                   className={cn(
                     "relative block w-full aspect-4/3 bg-zinc-100 dark:bg-zinc-900 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 select-none",
+                    isBeingDragged && "cursor-grabbing",
+                    isBeingMoved && "cursor-wait",
                   )}
+                  draggable={!isDeleting}
+                  onDragStart={(e) => props.onDragStart(m, e)}
+                  onDragEnd={props.onDragEnd}
                   onDoubleClick={() => props.onRequestView(m)}
                   onClick={(e) => {
                     if (props.didDragRef?.current) {
@@ -192,7 +282,7 @@ function MediaGrid(props: {
                 >
               <img
                 src={m.url}
-                alt={m.fileName ?? "Mídia"}
+                alt={m.fileName ?? "MÃ­dia"}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="lazy"
                 onError={(e) => {
@@ -205,8 +295,27 @@ function MediaGrid(props: {
                   <Spinner className="size-8 text-primary" />
                 </div>
               )}
+              {isBeingMoved && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                  <Spinner className="size-8 text-primary" />
+                </div>
+              )}
             </button>
-            <div className="flex items-center justify-between gap-2 p-2">
+            <div
+              className="flex items-center justify-between gap-2 p-2"
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest("[data-slot='dropdown-menu-trigger']") ||
+                  target.closest("[role='menu']") ||
+                  target.closest("button")
+                ) {
+                  return;
+                }
+                const mode = e.ctrlKey || e.metaKey ? "add" : e.shiftKey ? "range" : "normal";
+                props.onItemClick(m, e, mode);
+              }}
+            >
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 {isImageType(m.contentType) ? (
                   <FaImage className="size-4 shrink-0 text-muted-foreground" />
@@ -224,7 +333,7 @@ function MediaGrid(props: {
                     size="icon"
                     className="size-8 shrink-0"
                     disabled={isDeleting}
-                    aria-label="Opções"
+                    aria-label="OpÃ§Ãµes"
                   >
                     <SlOptionsVertical className="size-4" />
                   </Button>
@@ -303,6 +412,129 @@ function MediaGrid(props: {
   );
 }
 
+function FolderGrid(props: {
+  folders: MediaFolder[];
+  selectedFolderId: string | null;
+  dropTargetFolderId: string | null;
+  isMediaDragActive: boolean;
+  creatingFolderId: string | null;
+  deletingFolderIds: Set<string>;
+  onSelectFolder: (id: string) => void;
+  onOpenFolder: (id: string) => void;
+  onRequestRenameFolder: (folder: MediaFolder) => void;
+  onRequestDeleteFolder: (folder: MediaFolder) => void;
+  onDragEnterFolder: (id: string) => void;
+  onDragLeaveFolder: (id: string) => void;
+  onDropToFolder: (id: string) => void;
+}) {
+  if (props.folders.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-3 p-1.5">
+        {props.folders.map((folder) => {
+          const isSelected = props.selectedFolderId === folder.id;
+          const isDropTarget = props.dropTargetFolderId === folder.id;
+          const isCreating = props.creatingFolderId === folder.id;
+          const isDeleting = props.deletingFolderIds.has(folder.id);
+          const isBusy = isCreating || isDeleting;
+          return (
+            <ContextMenu
+              key={folder.id}
+              onOpenChange={(open) => {
+                if (open && !isSelected && !isBusy) props.onSelectFolder(folder.id);
+              }}
+            >
+              <ContextMenuTrigger asChild>
+                <div
+                  data-folder-item="true"
+                  className={cn(
+                    "relative inline-flex w-fit max-w-[360px]",
+                    props.isMediaDragActive && "cursor-move",
+                    isBusy && "pointer-events-none",
+                  )}
+                  onDragEnter={(e) => {
+                    if (!props.isMediaDragActive) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    props.onDragEnterFolder(folder.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (!props.isMediaDragActive) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "move";
+                    props.onDragEnterFolder(folder.id);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!props.isMediaDragActive) return;
+                    const hovered = document.elementFromPoint(e.clientX, e.clientY);
+                    if (hovered && e.currentTarget.contains(hovered)) return;
+                    props.onDragLeaveFolder(folder.id);
+                  }}
+                  onDrop={(e) => {
+                    if (!props.isMediaDragActive) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    props.onDropToFolder(folder.id);
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      "border-border inline-flex h-auto w-full max-w-[360px] appearance-none items-center shadow-xs gap-2.5 border text-left rounded-sm px-3 py-2 text-[15px] leading-5 bg-card shadow-black/10 transition-colors hover:bg-accent/50 cursor-pointer",
+                      isSelected && "border-primary ring-2 ring-primary/30",
+                      isDropTarget && "border-primary bg-primary/10 ring-2 ring-primary/25",
+                      isBusy && "opacity-60",
+                    )}
+                    onClick={() => {
+                      if (isBusy) return;
+                      props.onSelectFolder(folder.id);
+                    }}
+                    onDoubleClick={() => {
+                      if (isBusy) return;
+                      props.onOpenFolder(folder.id);
+                    }}
+                  >
+                    {isCreating ? (
+                      <Loader2 className="size-[18px] shrink-0 animate-spin text-primary" />
+                    ) : (
+                      <FiFolder className="size-[18px] shrink-0 text-amber-500" />
+                    )}
+                    <span className="truncate text-[15px] font-medium leading-5">{folder.name}</span>
+                  </button>
+                  {isDeleting ? (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-background/70">
+                      <Spinner className="size-5 text-primary" />
+                    </div>
+                  ) : null}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onClick={() => props.onOpenFolder(folder.id)}>
+                  <FiFolder className="mr-2 size-4" />
+                  Abrir pasta
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => props.onRequestRenameFolder(folder)}>
+                  <LuPencilLine className="mr-2 size-4" />
+                  Renomear pasta
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  variant="destructive"
+                  onClick={() => props.onRequestDeleteFolder(folder)}
+                >
+                  <TrashIcon className="mr-2 size-4" />
+                  Excluir pasta
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          );
+        })}
+    </div>
+  );
+}
+
 function Lightbox(props: {
   item: MediaItem | null;
   onClose: () => void;
@@ -325,7 +557,7 @@ function Lightbox(props: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-in fade-in-0"
       role="dialog"
       aria-modal
-      aria-label="Visualizar mídia"
+      aria-label="Visualizar mÃ­dia"
     >
       <button
         type="button"
@@ -336,7 +568,7 @@ function Lightbox(props: {
       <div className="relative z-10 flex max-h-[90vh] max-w-[90vw] items-center justify-center p-4">
         <img
           src={item.url}
-          alt={item.fileName ?? "Mídia"}
+          alt={item.fileName ?? "MÃ­dia"}
           className="max-h-[90vh] w-auto max-w-full object-contain"
           onClick={(e) => e.stopPropagation()}
         />
@@ -364,10 +596,15 @@ function DropZone(props: {
   const zoneRef = useRef<HTMLDivElement>(null);
   const dragCountRef = useRef(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const isFileDrag = (event: React.DragEvent) => {
+    const types = Array.from(event.dataTransfer?.types ?? []);
+    return types.includes("Files");
+  };
 
   function handleDragEnter(e: React.DragEvent) {
     e.preventDefault();
     if (disabled) return;
+    if (!isFileDrag(e)) return;
     if (!zoneRef.current?.contains(e.relatedTarget as Node)) {
       dragCountRef.current += 1;
       setIsDraggingOver(true);
@@ -383,6 +620,7 @@ function DropZone(props: {
   }
 
   function handleDragOver(e: React.DragEvent) {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
   }
@@ -409,7 +647,7 @@ function DropZone(props: {
 
     if (invalidFiles.length > 0) {
       toast.error(
-        `${invalidFiles.length} arquivo(s) com formato não suportado: ${invalidFiles.slice(0, 3).join(", ")}${invalidFiles.length > 3 ? "..." : ""}`,
+        `${invalidFiles.length} arquivo(s) com formato nÃ£o suportado: ${invalidFiles.slice(0, 3).join(", ")}${invalidFiles.length > 3 ? "..." : ""}`,
       );
     }
 
@@ -456,6 +694,7 @@ function DropZone(props: {
 export function MediaClient(props: { initialItems?: MediaItem[] }) {
   const media = useMediaLibrary({ initialItems: props.initialItems });
   const selection = useMediaSelection();
+
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; fileName: string | null } | null>(null);
   const [viewingItem, setViewingItem] = useState<MediaItem | null>(null);
   const [renameItem, setRenameItem] = useState<MediaItem | null>(null);
@@ -464,7 +703,31 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
   const [showUploadPanel, setShowUploadPanel] = useState(true);
   const [isDeletingSelection, setIsDeletingSelection] = useState(false);
   const [deletingCount, setDeletingCount] = useState(0);
+  const [draggedMediaIds, setDraggedMediaIds] = useState<string[]>([]);
+  const [movingMediaIds, setMovingMediaIds] = useState<string[]>([]);
+  const [isMediaDragActive, setIsMediaDragActive] = useState(false);
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
+  const [dropTargetBreadcrumbKey, setDropTargetBreadcrumbKey] = useState<string | null>(null);
+  const [isMovingToFolder, setIsMovingToFolder] = useState(false);
+
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>("all");
+  const [uploadDateFilter, setUploadDateFilter] = useState<UploadDateFilter>("all");
+
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [createFolderName, setCreateFolderName] = useState("Pasta sem título");
+  const [renameFolderTarget, setRenameFolderTarget] = useState<MediaFolder | null>(null);
+  const [renameFolderValue, setRenameFolderValue] = useState("");
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<MediaFolder | null>(null);
+  const [creatingFolderTempId, setCreatingFolderTempId] = useState<string | null>(null);
+  const [creatingFolderTempName, setCreatingFolderTempName] = useState<string | null>(null);
+  const [creatingFolderParentId, setCreatingFolderParentId] = useState<string | null>(null);
+  const [deletingFolderIds, setDeletingFolderIds] = useState<Set<string>>(new Set());
+
   const emptyFileInputRef = useRef<HTMLInputElement>(null);
+  const contextUploadInputRef = useRef<HTMLInputElement>(null);
+  const folderNameInputRef = useRef<HTMLInputElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const cardRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const didDragRef = useRef(false);
@@ -475,6 +738,87 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
       setShowUploadPanel(true);
     }
   }, [media.uploadProgress.length, uploadProgressIds]);
+
+  const folderById = useMemo(
+    () => new Map(media.folders.map((folder) => [folder.id, folder] as const)),
+    [media.folders],
+  );
+  const mediaById = useMemo(
+    () => new Map(media.items.map((item) => [item.id, item] as const)),
+    [media.items],
+  );
+  const draggedIdsSet = useMemo(() => new Set(draggedMediaIds), [draggedMediaIds]);
+  const movingIdsSet = useMemo(() => new Set(movingMediaIds), [movingMediaIds]);
+
+  const breadcrumbNodes = useMemo(
+    () => buildBreadcrumbPath(media.folders, currentFolderId),
+    [media.folders, currentFolderId],
+  );
+
+  const visibleFolders = useMemo(
+    () => media.folders.filter((folder) => (folder.parentFolderId ?? null) === currentFolderId),
+    [media.folders, currentFolderId],
+  );
+  const visibleFoldersWithOptimistic = useMemo(() => {
+    if (!creatingFolderTempId || !creatingFolderTempName) return visibleFolders;
+    if ((creatingFolderParentId ?? null) !== currentFolderId) return visibleFolders;
+    const optimistic: MediaFolder = {
+      id: creatingFolderTempId,
+      name: creatingFolderTempName,
+      parentFolderId: creatingFolderParentId ?? null,
+      createdAt: null,
+      updatedAt: null,
+    };
+    return [optimistic, ...visibleFolders];
+  }, [
+    visibleFolders,
+    creatingFolderTempId,
+    creatingFolderTempName,
+    creatingFolderParentId,
+    currentFolderId,
+  ]);
+
+  const visibleMediaItems = useMemo(
+    () =>
+      media.items
+        .filter((item) => (item.folderId ?? null) === currentFolderId)
+        .filter((item) => matchesMediaType(item, typeFilter))
+        .filter((item) => matchesUploadDate(item, uploadDateFilter)),
+    [media.items, currentFolderId, typeFilter, uploadDateFilter],
+  );
+  const isCurrentFolderEmpty = visibleFoldersWithOptimistic.length === 0 && visibleMediaItems.length === 0;
+
+  useEffect(() => {
+    if (selectedFolderId && !folderById.has(selectedFolderId)) {
+      setSelectedFolderId(null);
+    }
+  }, [folderById, selectedFolderId]);
+
+  useEffect(() => {
+    if (currentFolderId && !folderById.has(currentFolderId)) {
+      setCurrentFolderId(null);
+    }
+  }, [folderById, currentFolderId]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedFolderId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    selection.clearSelection();
+  }, [currentFolderId, typeFilter, uploadDateFilter, selection.clearSelection]);
+
+  useEffect(() => {
+    if (!isCreateFolderOpen) return;
+    setTimeout(() => {
+      folderNameInputRef.current?.focus();
+      folderNameInputRef.current?.select();
+    }, 0);
+  }, [isCreateFolderOpen]);
 
   const getCardsInSelection = useCallback(() => {
     if (!selection.selectionStart || !selection.selectionEnd || !gridContainerRef.current) {
@@ -518,7 +862,14 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
         });
       }
     }
-  }, [selection, getCardsInSelection]);
+  }, [
+    selection.isSelecting,
+    selection.selectionStart,
+    selection.selectionEnd,
+    selection.selectionMode,
+    selection.updateSelectedIds,
+    getCardsInSelection,
+  ]);
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -551,32 +902,61 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
       window.removeEventListener("mousemove", handleGlobalMouseMove);
       window.removeEventListener("mouseup", handleGlobalMouseUp);
     };
-  }, [selection]);
+  }, [
+    selection.isSelecting,
+    selection.selectionStart,
+    selection.selectionEnd,
+    selection.updateSelection,
+    selection.endSelection,
+  ]);
+
+  useEffect(() => {
+    const endSelectionOnly = () => {
+      selection.endSelection();
+    };
+    const endMediaDragStates = () => {
+      setIsMediaDragActive(false);
+      setDropTargetFolderId(null);
+      setDropTargetBreadcrumbKey(null);
+      setDraggedMediaIds([]);
+    };
+    window.addEventListener("dragstart", endSelectionOnly);
+    window.addEventListener("dragend", endMediaDragStates);
+    window.addEventListener("blur", endMediaDragStates);
+    return () => {
+      window.removeEventListener("dragstart", endSelectionOnly);
+      window.removeEventListener("dragend", endMediaDragStates);
+      window.removeEventListener("blur", endMediaDragStates);
+    };
+  }, [selection.endSelection]);
 
   const handleGridMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
+      if (isCurrentFolderEmpty) return;
       const target = e.target as HTMLElement;
       if (target.closest("[role='menu']")) return;
+      if (target.closest("[data-media-card='true']")) return;
+      if (target.closest("[data-media-item='true']")) return;
+      if (!target.closest("[data-folder-item='true']")) {
+        setSelectedFolderId(null);
+      }
 
       didDragRef.current = false;
       const mode = e.ctrlKey || e.metaKey ? "add" : "normal";
       selection.startSelection(e.clientX, e.clientY, mode);
     },
-    [selection],
+    [isCurrentFolderEmpty, selection.startSelection],
   );
-
-  const handleGridMouseUp = useCallback(() => {
-    selection.endSelection();
-  }, [selection]);
 
   const handleItemClick = useCallback(
     (item: MediaItem, e: React.MouseEvent | { stopPropagation: () => void }, mode: "normal" | "add" | "range") => {
       if ("stopPropagation" in e && typeof e.stopPropagation === "function") {
         e.stopPropagation();
       }
+      setSelectedFolderId(null);
       if (mode === "range" && selection.selectedIds.size > 0) {
-        const allIds = media.items.map((i) => i.id);
+        const allIds = visibleMediaItems.map((i) => i.id);
         const lastSelected = Array.from(selection.selectedIds).pop();
         if (lastSelected) {
           selection.selectRange(lastSelected, item.id, allIds);
@@ -585,7 +965,7 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
         selection.toggleSelection(item.id, mode);
       }
     },
-    [selection, media.items],
+    [selection.selectedIds, selection.selectRange, selection.toggleSelection, visibleMediaItems],
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -600,18 +980,88 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
     }
   }, [selection.selectedIds, media.items]);
 
+  const handleMediaDragStart = useCallback(
+    (item: MediaItem, event: React.DragEvent<HTMLButtonElement>) => {
+      const selectedIds = selection.selectedIds;
+      const ids = selectedIds.has(item.id) ? Array.from(selectedIds) : [item.id];
+      setDraggedMediaIds(ids);
+      setIsMediaDragActive(true);
+      setDropTargetFolderId(null);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData(INTERNAL_MEDIA_DRAG_TYPE, JSON.stringify(ids));
+      event.dataTransfer.setData("text/plain", `${ids.length}`);
+      const dragLabel = ids.length === 1 ? "1 mídia" : `${ids.length} mídias`;
+      event.currentTarget.setAttribute("aria-label", dragLabel);
+      const ghost = document.createElement("div");
+      ghost.style.position = "fixed";
+      ghost.style.top = "-1000px";
+      ghost.style.left = "-1000px";
+      ghost.style.padding = "6px 10px";
+      ghost.style.border = "1px solid rgba(14,165,233,0.45)";
+      ghost.style.borderRadius = "8px";
+      ghost.style.background = "rgba(255,255,255,0.96)";
+      ghost.style.color = "#0f172a";
+      ghost.style.fontSize = "12px";
+      ghost.style.fontWeight = "600";
+      ghost.style.boxShadow = "0 4px 12px rgba(2,6,23,0.18)";
+      ghost.textContent = ids.length === 1 ? (item.fileName ?? "1 item") : `${ids.length} itens`;
+      document.body.appendChild(ghost);
+      event.dataTransfer.setDragImage(ghost, 12, 12);
+      requestAnimationFrame(() => {
+        if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      });
+    },
+    [selection.selectedIds],
+  );
+
+  const handleMediaDragEnd = useCallback(() => {
+    setIsMediaDragActive(false);
+    setDropTargetFolderId(null);
+    setDropTargetBreadcrumbKey(null);
+    setDraggedMediaIds([]);
+  }, []);
+
+  const handleDropToFolder = useCallback(
+    async (folderId: string | null) => {
+      const ids = draggedMediaIds.length > 0 ? draggedMediaIds : Array.from(selection.selectedIds);
+      if (ids.length === 0) return;
+      const effectiveIds = ids.filter((id) => (mediaById.get(id)?.folderId ?? null) !== folderId);
+      setDropTargetFolderId(null);
+      setDropTargetBreadcrumbKey(null);
+      setIsMediaDragActive(false);
+      setDraggedMediaIds([]);
+      if (effectiveIds.length === 0) return;
+      setMovingMediaIds(effectiveIds);
+      selection.clearSelection();
+      setIsMovingToFolder(true);
+      try {
+        await media.moveItemsToFolder(effectiveIds, folderId);
+      } finally {
+        setIsMovingToFolder(false);
+        setMovingMediaIds([]);
+      }
+    },
+    [draggedMediaIds, selection.selectedIds, mediaById, media, selection.clearSelection],
+  );
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (e.key !== "Delete") return;
       const active = document.activeElement as HTMLElement | null;
       if (active?.closest("input, textarea") || active?.isContentEditable) return;
-      if (selection.selectedIds.size === 0) return;
       e.preventDefault();
-      handleDeleteSelected();
+      if (selection.selectedIds.size > 0) {
+        handleDeleteSelected();
+        return;
+      }
+      if (selectedFolderId) {
+        const folder = folderById.get(selectedFolderId);
+        if (folder) setDeleteFolderTarget(folder);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selection.selectedIds.size, handleDeleteSelected]);
+  }, [selection.selectedIds.size, handleDeleteSelected, selectedFolderId, folderById]);
 
   function openRename(item: MediaItem) {
     setRenameItem(item);
@@ -620,8 +1070,86 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
 
   function submitRename() {
     if (!renameItem || !renameValue.trim()) return;
-    media.renameItem(renameItem.id, renameValue.trim());
+    void media.renameItem(renameItem.id, renameValue.trim());
     setRenameItem(null);
+  }
+
+  function openCreateFolderDialog() {
+    setCreateFolderName("Pasta sem título");
+    setIsCreateFolderOpen(true);
+  }
+
+  async function submitCreateFolder() {
+    const name = createFolderName.trim() || "Pasta sem título";
+    const tempId = `temp-folder-${Date.now()}`;
+    setCreatingFolderTempId(tempId);
+    setCreatingFolderTempName(name);
+    setCreatingFolderParentId(currentFolderId ?? null);
+    try {
+      const created = await media.createFolder(name, currentFolderId);
+      setSelectedFolderId(created.id);
+      setIsCreateFolderOpen(false);
+      setCreateFolderName("Pasta sem título");
+    } catch {
+      // handled by hook
+    } finally {
+      setCreatingFolderTempId(null);
+      setCreatingFolderTempName(null);
+      setCreatingFolderParentId(null);
+    }
+  }
+
+  function openRenameFolderDialog(folder: MediaFolder) {
+    setRenameFolderTarget(folder);
+    setRenameFolderValue(folder.name);
+  }
+
+  async function submitRenameFolder() {
+    if (!renameFolderTarget || !renameFolderValue.trim()) return;
+    try {
+      await media.renameFolder(renameFolderTarget.id, renameFolderValue.trim());
+      setRenameFolderTarget(null);
+      setRenameFolderValue("");
+    } catch {
+      // handled by hook
+    }
+  }
+
+  async function handleUploadInputFiles(files: File[]) {
+    if (files.length === 0) return;
+    if (files.length === 1) {
+      await media.onPickFile(files[0], { folderId: currentFolderId });
+      return;
+    }
+    await media.onPickFiles(files, { folderId: currentFolderId });
+  }
+
+  async function confirmDeleteFolder() {
+    if (!deleteFolderTarget) return;
+    const target = deleteFolderTarget;
+    setDeleteFolderTarget(null);
+    setDeletingFolderIds((prev) => {
+      const next = new Set(prev);
+      next.add(target.id);
+      return next;
+    });
+    try {
+      await media.deleteFolder(target.id);
+      if (currentFolderId === target.id) {
+        setCurrentFolderId(target.parentFolderId ?? null);
+      }
+      if (selectedFolderId === target.id) {
+        setSelectedFolderId(null);
+      }
+    } catch {
+      // handled by hook
+    } finally {
+      setDeletingFolderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(target.id);
+        return next;
+      });
+    }
   }
 
   const dropZoneDisabled = media.isBusy || !media.canUpload;
@@ -631,9 +1159,188 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
   const showDeletingState = media.isDeletingBatch || isDeletingSelection;
   const countForToolbar = deletingCount || selectedCount;
 
+  const isLoadingLibrary = media.isLoading || media.isLoadingFolders;
+  const isWorkspaceEmpty = media.items.length === 0 && media.folders.length === 0;
+
   return (
     <div className="space-y-4">
+      <input
+        ref={contextUploadInputRef}
+        type="file"
+        accept={ACCEPT_IMAGES}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          void handleUploadInputFiles(files);
+        }}
+      />
+
       {media.error && <p className="text-destructive text-sm">{media.error}</p>}
+
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <Breadcrumb>
+            <BreadcrumbList className="gap-2 text-foreground">
+            {breadcrumbNodes.map((node, index) => {
+              const isLast = index === breadcrumbNodes.length - 1;
+              const isAncestor = index < breadcrumbNodes.length - 1;
+              const nodeDropKey = node.id ?? BREADCRUMB_ROOT_DROP_KEY;
+              const isBreadcrumbDropTarget =
+                isMediaDragActive && dropTargetBreadcrumbKey === nodeDropKey;
+              return (
+                <BreadcrumbItem key={node.id ?? "root"}>
+                  <div
+                    className="rounded-md"
+                    onDragEnter={(e) => {
+                      if (!isMediaDragActive) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDropTargetFolderId(null);
+                      setDropTargetBreadcrumbKey(nodeDropKey);
+                    }}
+                    onDragOver={(e) => {
+                      if (!isMediaDragActive) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      setDropTargetFolderId(null);
+                      setDropTargetBreadcrumbKey(nodeDropKey);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!isMediaDragActive) return;
+                      const hovered = document.elementFromPoint(e.clientX, e.clientY);
+                      if (hovered && e.currentTarget.contains(hovered)) return;
+                      if (dropTargetBreadcrumbKey === nodeDropKey) {
+                        setDropTargetBreadcrumbKey(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (!isMediaDragActive) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDropToFolder(node.id ?? null);
+                    }}
+                  >
+                    {isLast ? (
+                      <BreadcrumbPage
+                        className={cn(
+                          "inline-flex items-center rounded-md border border-transparent px-2 py-1 text-2xl font-semibold text-foreground",
+                          isBreadcrumbDropTarget && "border-primary/40 bg-primary/10",
+                        )}
+                      >
+                        {node.name}
+                      </BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink
+                        asChild
+                        className={cn(
+                          "cursor-pointer text-2xl font-semibold text-foreground transition-opacity",
+                          isAncestor ? "opacity-70 hover:opacity-100" : "opacity-100",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "inline-flex items-center rounded-md border border-transparent px-2 py-1",
+                            isBreadcrumbDropTarget && "border-primary/40 bg-primary/10 opacity-100",
+                          )}
+                          onClick={() => {
+                            setCurrentFolderId(node.id);
+                            setSelectedFolderId(null);
+                          }}
+                        >
+                          {node.name}
+                        </button>
+                      </BreadcrumbLink>
+                    )}
+                  </div>
+                  {!isLast ? (
+                    <BreadcrumbSeparator className={cn(isAncestor ? "text-foreground/70" : "text-foreground")}>
+                      <FaChevronRight className="size-3" />
+                    </BreadcrumbSeparator>
+                  ) : null}
+                </BreadcrumbItem>
+              );
+            })}
+            </BreadcrumbList>
+          </Breadcrumb>
+          <MediaUploadAction initialItems={props.initialItems} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-10 rounded-xl px-4 text-sm font-medium"
+              >
+                <span className="text-sm">
+                  {typeFilter === "all"
+                    ? "Tipo"
+                    : typeFilter === "image"
+                      ? "Imagem"
+                      : "Vídeo"}
+                </span>
+                <ChevronDown className="size-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[180px]">
+              <DropdownMenuItem onClick={() => setTypeFilter("image")}>
+                Imagem
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTypeFilter("video")}>
+                Vídeo
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setTypeFilter("all")}>
+                Limpar filtro
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-10 rounded-xl px-4 text-sm font-medium"
+              >
+                <span className="text-sm">
+                  {uploadDateFilter === "all"
+                    ? "Data de upload"
+                    : uploadDateFilter === "today"
+                      ? "Hoje"
+                      : uploadDateFilter === "yesterday"
+                        ? "Ontem"
+                        : uploadDateFilter === "last7days"
+                          ? "Últimos 7 dias"
+                          : "Último mês"}
+                </span>
+                <ChevronDown className="size-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[220px]">
+              <DropdownMenuItem onClick={() => setUploadDateFilter("today")}>
+                Hoje
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setUploadDateFilter("yesterday")}>
+                Ontem
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setUploadDateFilter("last7days")}>
+                Últimos 7 dias
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setUploadDateFilter("lastMonth")}>
+                Último mês
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setUploadDateFilter("all")}>
+                Limpar filtro
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
 
       {showSelectionToolbar && (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border bg-background px-4 py-3 shadow-lg animate-in slide-in-from-bottom-4">
@@ -671,103 +1378,160 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
         />
       )}
 
-      {media.isLoading ? (
+      {isLoadingLibrary ? (
         <div className="text-muted-foreground text-sm">Carregando...</div>
-      ) : media.items.length === 0 ? (
-        <DropZone
-          onFile={media.onPickFile}
-          onFiles={media.onPickFiles}
-          disabled={dropZoneDisabled}
-          fillHeight
-        >
-          <Empty className="min-h-full border border-dashed">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ImageIcon className="size-6" />
-              </EmptyMedia>
-              <EmptyTitle>Sua biblioteca está vazia</EmptyTitle>
-              <EmptyDescription>
-                Arraste arquivos para cá ou use o botão abaixo. Formatos: JPEG, PNG, WEBP ou HEIC. Máximo 10MB por arquivo.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <input
-                ref={emptyFileInputRef}
-                type="file"
-                accept={ACCEPT_IMAGES}
-                multiple
-                className="hidden"
-                aria-hidden
-                onChange={(e) => {
-                  const files = Array.from(e.target.files ?? []);
-                  if (files.length === 0) return;
-                  e.target.value = "";
-                  if (files.length === 1) {
-                    media.onPickFile(files[0]);
-                  } else if (media.onPickFiles) {
-                    media.onPickFiles(files);
-                  } else {
-                    files.forEach((file) => media.onPickFile(file));
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                disabled={media.isBusy || !media.canUpload}
-                onClick={() => emptyFileInputRef.current?.click()}
-              >
-                {media.uploadPending ? (
-                  <span className="flex items-center gap-2">
-                    <Spinner className="size-4 shrink-0" />
-                    Enviando...
-                  </span>
-                ) : (
-                  "Enviar imagem"
-                )}
-              </Button>
-            </EmptyContent>
-          </Empty>
-        </DropZone>
       ) : (
         <DropZone
-          onFile={media.onPickFile}
-          onFiles={media.onPickFiles}
+          onFile={(file) => {
+            void media.onPickFile(file, { folderId: currentFolderId });
+          }}
+          onFiles={(files) => {
+            void media.onPickFiles(files, { folderId: currentFolderId });
+          }}
           disabled={dropZoneDisabled}
           fillHeight
         >
-          <div
-            className="flex min-h-0 flex-1"
-            onMouseDown={handleGridMouseDown}
-            aria-hidden={selection.isSelecting}
-          >
-            <div ref={gridContainerRef} className="relative w-full">
-              <SelectionOverlay
-                start={selection.selectionStart}
-                end={selection.selectionEnd}
-                visible={selection.isSelecting}
-              />
-              <MediaGrid
-              items={media.items}
-              deletingId={media.deletingId}
-              uploadPending={media.uploadPending}
-              selectedIds={selection.selectedIds}
-              cardRefs={cardRefsMap}
-              didDragRef={didDragRef}
-              onItemClick={handleItemClick}
-              onRequestView={setViewingItem}
-              onRequestRename={openRename}
-              onRequestDelete={(id, fileName) => setDeleteConfirm({ id, fileName })}
-              onRequestDetails={setDetailsItem}
-              />
-            </div>
-          </div>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div
+                ref={gridContainerRef}
+                className="relative min-h-[calc(100vh-12rem)] space-y-4 pt-2"
+                onMouseDown={handleGridMouseDown}
+                aria-hidden={selection.isSelecting}
+              >
+                <SelectionOverlay
+                  start={selection.selectionStart}
+                  end={selection.selectionEnd}
+                  visible={selection.isSelecting}
+                />
+                {isWorkspaceEmpty ? (
+                  <Empty className="min-h-[420px] border border-dashed">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <ImageIcon className="size-6" />
+                      </EmptyMedia>
+                      <EmptyTitle>Sua biblioteca está vazia</EmptyTitle>
+                      <EmptyDescription>
+                        Clique com o botão direito para criar uma pasta ou enviar imagens. Formatos: JPEG, PNG, WEBP ou HEIC.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <input
+                        ref={emptyFileInputRef}
+                        type="file"
+                        accept={ACCEPT_IMAGES}
+                        multiple
+                        className="hidden"
+                        aria-hidden
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files ?? []);
+                          e.target.value = "";
+                          void handleUploadInputFiles(files);
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        disabled={media.isBusy || !media.canUpload}
+                        onClick={() => emptyFileInputRef.current?.click()}
+                      >
+                        {media.uploadPending ? (
+                          <span className="flex items-center gap-2">
+                            <Spinner className="size-4 shrink-0" />
+                            Enviando...
+                          </span>
+                        ) : (
+                          "Enviar imagem"
+                        )}
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
+                ) : (
+                  <>
+                    <FolderGrid
+                      folders={visibleFoldersWithOptimistic}
+                      selectedFolderId={selectedFolderId}
+                      dropTargetFolderId={dropTargetFolderId}
+                      isMediaDragActive={isMediaDragActive}
+                      creatingFolderId={creatingFolderTempId}
+                      deletingFolderIds={deletingFolderIds}
+                      onSelectFolder={(id) => {
+                        if (id.startsWith("temp-folder-")) return;
+                        setSelectedFolderId(id);
+                        selection.clearSelection();
+                      }}
+                      onOpenFolder={(id) => {
+                        if (id.startsWith("temp-folder-")) return;
+                        setCurrentFolderId(id);
+                        setSelectedFolderId(null);
+                      }}
+                      onRequestRenameFolder={openRenameFolderDialog}
+                      onRequestDeleteFolder={setDeleteFolderTarget}
+                      onDragEnterFolder={(id) => {
+                        setDropTargetBreadcrumbKey(null);
+                        setDropTargetFolderId(id);
+                      }}
+                      onDragLeaveFolder={(id) => {
+                        if (dropTargetFolderId === id) setDropTargetFolderId(null);
+                      }}
+                      onDropToFolder={(id) => {
+                        void handleDropToFolder(id);
+                      }}
+                    />
 
-          {viewingItem && (
-            <Lightbox
-              item={viewingItem}
-              onClose={() => setViewingItem(null)}
-            />
-          )}
+                    {isCurrentFolderEmpty ? (
+                      <div className="flex min-h-[260px] flex-col items-center justify-center px-4 text-center">
+                        <img
+                          src="/empty_folder_state_illustration_sm.webp"
+                          alt="Pasta vazia"
+                          className="mb-4 h-auto w-[140px] max-w-[35vw] object-contain"
+                        />
+                        <p className="text-xl font-semibold text-foreground">Ainda não há nada aqui</p>
+                        <p className="mt-2 text-sm text-foreground/80">
+                          Arraste itens para cá ou clique em "Enviar imagens".
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex min-h-0 flex-1">
+                        <MediaGrid
+                          items={visibleMediaItems}
+                          deletingIds={media.deletingIds}
+                          uploadPending={media.uploadPending}
+                          selectedIds={selection.selectedIds}
+                          draggedIds={draggedIdsSet}
+                          movingIds={movingIdsSet}
+                          cardRefs={cardRefsMap}
+                          didDragRef={didDragRef}
+                          onItemClick={handleItemClick}
+                          onRequestView={setViewingItem}
+                          onRequestRename={openRename}
+                          onRequestDelete={(id, fileName) => setDeleteConfirm({ id, fileName })}
+                          onRequestDetails={setDetailsItem}
+                          onDragStart={handleMediaDragStart}
+                          onDragEnd={handleMediaDragEnd}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onClick={openCreateFolderDialog}>
+                <FiFolderPlus className="mr-2 size-4" />
+                Criar pasta
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                disabled={media.isBusy || !media.canUpload || isMovingToFolder}
+                onClick={() => contextUploadInputRef.current?.click()}
+              >
+                <LuImagePlus className="mr-2 size-4" />
+                Enviar imagem
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+
+          {viewingItem && <Lightbox item={viewingItem} onClose={() => setViewingItem(null)} />}
 
           <MediaDetailsSheet
             open={!!detailsItem}
@@ -812,6 +1576,98 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Nova pasta</DialogTitle>
+              </DialogHeader>
+              <div className="py-2">
+                <Input
+                  ref={folderNameInputRef}
+                  value={createFolderName}
+                  onChange={(e) => setCreateFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitCreateFolder();
+                  }}
+                />
+              </div>
+              <DialogFooter showCloseButton={false}>
+                <Button variant="outline" onClick={() => setIsCreateFolderOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => void submitCreateFolder()} disabled={!createFolderName.trim() || media.isCreatingFolder}>
+                  {media.isCreatingFolder ? "Salvando..." : "Salvar"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!renameFolderTarget}
+            onOpenChange={(open) => {
+              if (!open) {
+                setRenameFolderTarget(null);
+                setRenameFolderValue("");
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Renomear pasta</DialogTitle>
+              </DialogHeader>
+              <div className="py-2">
+                <Input
+                  value={renameFolderValue}
+                  onChange={(e) => setRenameFolderValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitRenameFolder();
+                  }}
+                />
+              </div>
+              <DialogFooter showCloseButton={false}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setRenameFolderTarget(null);
+                    setRenameFolderValue("");
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => void submitRenameFolder()}
+                  disabled={!renameFolderValue.trim() || media.isRenamingFolder}
+                >
+                  {media.isRenamingFolder ? "Salvando..." : "Salvar"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog
+            open={!!deleteFolderTarget}
+            onOpenChange={(open) => {
+              if (!open) setDeleteFolderTarget(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir pasta?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {deleteFolderTarget
+                    ? `A pasta "${deleteFolderTarget.name}" será removida. A pasta precisa estar vazia para ser excluída.`
+                    : "A pasta será removida."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={() => void confirmDeleteFolder()}>
+                  Excluir
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
             <AlertDialogContent>
@@ -863,4 +1719,3 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RatioIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -71,6 +71,7 @@ export function PostPreviewCrop(props: {
   imageSrc: string | null;
   imageAlt?: string;
   aspectRatio: PreviewAspectRatio;
+  cropData?: CropData | null;
   onAspectRatioChange?: (value: PreviewAspectRatio) => void;
   onCropChange?: (crop: CropData) => void;
   emptyPlaceholder?: string;
@@ -83,6 +84,7 @@ export function PostPreviewCrop(props: {
     imageSrc,
     imageAlt,
     aspectRatio,
+    cropData,
     onAspectRatioChange,
     onCropChange,
     emptyPlaceholder,
@@ -100,6 +102,7 @@ export function PostPreviewCrop(props: {
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const lastCropRef = useRef<CropData | null>(null);
   const onCropChangeRef = useRef(onCropChange);
+  const lastAppliedCropRef = useRef<string | null>(null);
 
   // Atualizar ref quando onCropChange mudar
   useEffect(() => {
@@ -130,14 +133,66 @@ export function PostPreviewCrop(props: {
     naturalSize.height <= viewportSize;
 
   useEffect(() => {
+    let frame = 0;
     if (!canPan) {
-      setPanX(0);
-      setPanY(0);
+      frame = requestAnimationFrame(() => {
+        setPanX(0);
+        setPanY(0);
+      });
     } else {
-      setPanX((p) => clampPan(p, frameSize.width, viewportSize));
-      setPanY((p) => clampPan(p, frameSize.height, viewportSize));
+      frame = requestAnimationFrame(() => {
+        setPanX((current) => clampPan(current, frameSize.width, viewportSize));
+        setPanY((current) => clampPan(current, frameSize.height, viewportSize));
+      });
     }
+    return () => cancelAnimationFrame(frame);
   }, [aspectRatio, canPan, frameSize.width, frameSize.height, viewportSize]);
+
+  useEffect(() => {
+    if (!imageSrc) {
+      lastAppliedCropRef.current = null;
+      return;
+    }
+
+    const currentCrop = cropData ?? null;
+    const cropKey = currentCrop
+      ? `${imageSrc}:${currentCrop.aspectRatio}:${currentCrop.cropX.toFixed(4)}:${currentCrop.cropY.toFixed(4)}:${frameSize.width}:${frameSize.height}:${viewportSize}`
+      : `${imageSrc}:${aspectRatio}:default:${frameSize.width}:${frameSize.height}:${viewportSize}`;
+
+    if (lastAppliedCropRef.current === cropKey) return;
+
+    let frame = 0;
+    if (!currentCrop || currentCrop.aspectRatio !== aspectRatio || !canPan) {
+      lastAppliedCropRef.current = cropKey;
+      frame = requestAnimationFrame(() => {
+        setPanX(0);
+        setPanY(0);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+
+    const maxPanX = overflowX > 0 ? overflowX / 2 : 0;
+    const maxPanY = overflowY > 0 ? overflowY / 2 : 0;
+    const nextPanX = maxPanX > 0 ? (0.5 - currentCrop.cropX) * 2 * maxPanX : 0;
+    const nextPanY = maxPanY > 0 ? (0.5 - currentCrop.cropY) * 2 * maxPanY : 0;
+
+    lastAppliedCropRef.current = cropKey;
+    frame = requestAnimationFrame(() => {
+      setPanX(clampPan(nextPanX, frameSize.width, viewportSize));
+      setPanY(clampPan(nextPanY, frameSize.height, viewportSize));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    imageSrc,
+    cropData,
+    aspectRatio,
+    canPan,
+    overflowX,
+    overflowY,
+    frameSize.width,
+    frameSize.height,
+    viewportSize,
+  ]);
 
   // Calcular coordenadas de crop e notificar mudanças
   useEffect(() => {
@@ -213,8 +268,8 @@ export function PostPreviewCrop(props: {
       if (!dragging) return;
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
-      setPanX((p) => clampPan(dragStart.current.panX + dx, frameSize.width, viewportSize));
-      setPanY((p) => clampPan(dragStart.current.panY + dy, frameSize.height, viewportSize));
+      setPanX(() => clampPan(dragStart.current.panX + dx, frameSize.width, viewportSize));
+      setPanY(() => clampPan(dragStart.current.panY + dy, frameSize.height, viewportSize));
     },
     [dragging, frameSize.width, frameSize.height, viewportSize]
   );
@@ -227,7 +282,10 @@ export function PostPreviewCrop(props: {
     <div className={cn("flex w-full min-w-0 max-w-[700px] flex-col", className)}>
       <div
         ref={containerRef}
-        className="bg-muted relative w-full shrink-0 overflow-hidden rounded-md"
+        className={cn(
+          "relative w-full shrink-0 overflow-hidden rounded-md",
+          aspectRatio === "original" ? "bg-white" : "bg-muted",
+        )}
         style={{ aspectRatio: "1 / 1" }}
       >
         {isLoading ? (

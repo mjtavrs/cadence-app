@@ -1,9 +1,10 @@
+﻿import { cookies } from "next/headers";
 import type { Metadata } from "next";
-import { MediaClient } from "./MediaClient";
-import { cookies } from "next/headers";
+
 import { env } from "@/lib/env";
-import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
-import { MediaUploadAction } from "./MediaClient";
+import { Page } from "@/components/page/page";
+
+import { MediaClient } from "./MediaClient";
 
 export const metadata: Metadata = {
   title: "Biblioteca de mídia",
@@ -40,20 +41,10 @@ async function loadMediaOnServer() {
 
 export default async function MediaPage() {
   const initialItems = await loadMediaOnServer();
+
   return (
     <Page>
-      <PageHeader>
-        <PageHeaderText>
-          <PageTitle>Biblioteca de mídia</PageTitle>
-          <PageDescription>Até 30 imagens por workspace. Máximo de 10MB por arquivo.</PageDescription>
-        </PageHeaderText>
-        <PageActions>
-          <MediaUploadAction initialItems={initialItems} />
-        </PageActions>
-      </PageHeader>
-
       <MediaClient initialItems={initialItems} />
     </Page>
   );
 }
-

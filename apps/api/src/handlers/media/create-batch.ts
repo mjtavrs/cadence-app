@@ -1,10 +1,11 @@
-import type { APIGatewayProxyHandler } from "aws-lambda";
-import { BatchWriteCommand } from "@aws-sdk/lib-dynamodb";
+﻿import type { APIGatewayProxyHandler } from "aws-lambda";
+import { BatchWriteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
-import { MEDIA } from "../../media/limits";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
+import { MEDIA } from "../../media/limits";
 
 type MediaItemInput = {
   mediaId?: string;
@@ -16,6 +17,7 @@ type MediaItemInput = {
 
 type CreateBatchBody = {
   workspaceId?: string;
+  folderId?: string | null;
   items?: MediaItemInput[];
 };
 
@@ -29,18 +31,19 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     body = event.body ? (JSON.parse(event.body) as CreateBatchBody) : {};
   } catch {
-    return badRequest("Body inválido (JSON).");
+    return badRequest("Body invalido (JSON).");
   }
 
   const workspaceId = body.workspaceId?.trim();
+  const folderId = typeof body.folderId === "string" ? body.folderId.trim() : null;
   const items = body.items ?? [];
 
-  if (!workspaceId) return badRequest("workspaceId é obrigatório.");
+  if (!workspaceId) return badRequest("workspaceId e obrigatorio.");
   if (!Array.isArray(items) || items.length === 0) {
-    return badRequest("items deve ser um array não vazio.");
+    return badRequest("items deve ser um array nao vazio.");
   }
   if (items.length > MAX_ITEMS_PER_BATCH) {
-    return badRequest(`Máximo de ${MAX_ITEMS_PER_BATCH} itens por batch.`);
+    return badRequest(`Maximo de ${MAX_ITEMS_PER_BATCH} itens por batch.`);
   }
 
   const errors: Array<{ mediaId: string; message: string }> = [];
@@ -53,19 +56,19 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const sizeBytes = item?.sizeBytes;
 
     if (!mediaId) {
-      errors.push({ mediaId: item?.mediaId ?? "unknown", message: "mediaId é obrigatório." });
+      errors.push({ mediaId: item?.mediaId ?? "unknown", message: "mediaId e obrigatorio." });
       continue;
     }
     if (!s3Key) {
-      errors.push({ mediaId, message: "s3Key é obrigatório." });
+      errors.push({ mediaId, message: "s3Key e obrigatorio." });
       continue;
     }
     if (!contentType || !MEDIA.allowedContentTypes.has(contentType)) {
-      errors.push({ mediaId, message: "contentType inválido." });
+      errors.push({ mediaId, message: "contentType invalido." });
       continue;
     }
     if (typeof sizeBytes !== "number" || sizeBytes <= 0 || sizeBytes > MEDIA.maxBytes) {
-      errors.push({ mediaId, message: "sizeBytes inválido." });
+      errors.push({ mediaId, message: "sizeBytes invalido." });
       continue;
     }
 
@@ -73,7 +76,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   }
 
   if (validItems.length === 0) {
-    return json(400, { message: "Nenhum item válido encontrado.", errors });
+    return json(400, { message: "Nenhum item valido encontrado.", errors });
   }
 
   try {
@@ -85,6 +88,22 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const ddb = getDocClient();
     const tableName = getTableName();
+
+    if (folderId) {
+      const folderRes = await ddb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: `WORKSPACE#${workspaceId}`,
+            SK: `FOLDER#${folderId}`,
+          },
+          ProjectionExpression: "folderId",
+        }),
+      );
+
+      if (!folderRes.Item) return badRequest("Pasta nao encontrada.");
+    }
+
     const createdAt = new Date().toISOString();
 
     const writeRequests = validItems.map((item) => ({
@@ -97,6 +116,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           contentType: item.contentType,
           sizeBytes: item.sizeBytes,
           fileName: item.fileName?.trim() || null,
+          folderId,
           s3Key: item.s3Key,
           createdAt,
         },
@@ -112,35 +132,29 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     );
 
     const created: Array<{ mediaId: string }> = [];
-    const processedMediaIds = new Set<string>();
 
     if (batchResult.UnprocessedItems && Object.keys(batchResult.UnprocessedItems).length > 0) {
       const unprocessed = batchResult.UnprocessedItems[tableName] ?? [];
-      const unprocessedIndices = new Set<number>();
+      const unprocessedMediaIds = new Set<string>();
 
       for (const unprocessedReq of unprocessed) {
-        if (unprocessedReq.PutRequest) {
-          const mediaId = unprocessedReq.PutRequest.Item.mediaId;
-          const index = writeRequests.findIndex(
-            (req) => req.PutRequest.Item.mediaId === mediaId,
-          );
-          if (index >= 0) {
-            unprocessedIndices.add(index);
-            errors.push({ mediaId, message: "Falha ao processar item. Tente novamente." });
-          }
-        }
+        const mediaId = unprocessedReq.PutRequest?.Item?.mediaId;
+        if (typeof mediaId !== "string") continue;
+
+        unprocessedMediaIds.add(mediaId);
+        errors.push({ mediaId, message: "Falha ao processar item. Tente novamente." });
       }
 
-      for (let i = 0; i < validItems.length; i++) {
-        if (!unprocessedIndices.has(i)) {
-          const mediaId = validItems[i].mediaId!;
-          created.push({ mediaId });
-          processedMediaIds.add(mediaId);
-        }
+      for (const item of validItems) {
+        const mediaId = item.mediaId;
+        if (!mediaId || unprocessedMediaIds.has(mediaId)) continue;
+        created.push({ mediaId });
       }
     } else {
       for (const item of validItems) {
-        created.push({ mediaId: item.mediaId! });
+        const mediaId = item.mediaId;
+        if (!mediaId) continue;
+        created.push({ mediaId });
       }
     }
 
@@ -154,9 +168,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     return json(201, response);
-  } catch (err: any) {
-    const name = err?.name as string | undefined;
-    if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");
-    return serverError("Não foi possível registrar a mídia agora.");
+  } catch (err: unknown) {
+    const name = (err as { name?: string })?.name;
+    if (name === "NotAuthorizedException") return unauthorized("Sessao expirada. Faca login novamente.");
+    return serverError("Nao foi possivel registrar a midia agora.");
   }
 };

@@ -1,26 +1,26 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { HelpCircle } from "lucide-react";
 
+import { MediaLibraryDialog } from "@/components/posts/media-library-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 import { TagsInput } from "@/components/posts/tags-input";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
 import { PostPreviewCrop, type CropData, type PreviewAspectRatio } from "@/components/posts/post-preview-crop";
+import { preloadEmojiCatalog } from "@/lib/emoji-catalog";
 import { getCalendarDateAndTimeFromUtcRecife, getNextQuarterSlotInTimeZone, formatRecifeDateTimeShort } from "@/lib/datetime";
 
 const CAPTION_LIMIT = 2200;
@@ -89,6 +89,10 @@ function FieldHelper(props: { text: string }) {
 export function EditPostClient(props: { initialPost: EditablePost; initialMedia: MediaItem[] }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    preloadEmojiCatalog();
+  }, []);
 
   const initialAspect = isAspectRatio(props.initialPost.aspectRatio) ? props.initialPost.aspectRatio : "1:1";
   const initialScheduledAt = props.initialPost.scheduledAtUtc ?? null;
@@ -199,12 +203,11 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
     setLibraryDialogOpen(true);
   }
 
-  async function confirmLibraryPick() {
-    if (!pickedMediaId) return;
-    setSelectedMediaId(pickedMediaId);
+  async function confirmLibraryPick(id: string) {
+    setSelectedMediaId(id);
     setLibraryDialogOpen(false);
 
-    if (!media.some((m) => m.id === pickedMediaId)) {
+    if (!media.some((m) => m.id === id)) {
       try {
         await reloadMedia();
       } catch (e) {
@@ -296,23 +299,44 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
             <Link href="/app/posts">Voltar</Link>
           </Button>
           <Button disabled={saving || uploadPending} onClick={() => void save()}>
-            {saving ? "Salvando..." : "Salvar"}
+            {saving ? (
+              <span className="inline-flex items-center gap-2">
+                <Spinner data-icon="inline-start" />
+                Salvando...
+              </span>
+            ) : (
+              "Salvar"
+            )}
           </Button>
         </PageActions>
       </PageHeader>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="mx-auto grid max-w-[1060px] gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="p-4">
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-medium">Imagem do post</div>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={uploadPending} onClick={() => fileInputRef.current?.click()}>
-                  {uploadPending ? "Enviando..." : "Enviar imagem"}
-                </Button>
-                <Button type="button" variant="secondary" size="sm" onClick={openLibraryDialog}>
-                  Biblioteca
-                </Button>
+            <div className="rounded-xl border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">Alterar mídia do post</div>
+                  <div className="text-muted-foreground text-sm">
+                    Envie uma nova imagem ou escolha outra da biblioteca.
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" disabled={uploadPending} onClick={() => fileInputRef.current?.click()}>
+                    {uploadPending ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Spinner data-icon="inline-start" />
+                        Enviando...
+                      </span>
+                    ) : (
+                      "Enviar imagem"
+                    )}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" disabled={uploadPending} onClick={openLibraryDialog}>
+                    Biblioteca
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -320,6 +344,7 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
               imageSrc={selectedMedia?.url ?? null}
               imageAlt={selectedMedia?.fileName ?? "Mídia selecionada"}
               aspectRatio={aspectRatio}
+              cropData={cropData}
               onAspectRatioChange={(value) => {
                 setAspectRatio(value);
                 setCropData((prev) => ({
@@ -347,7 +372,7 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
                 <span className="text-sm font-medium">Título</span>
                 <FieldHelper text="Essas informações são para organização interna do workspace e não interferem no seu post." />
               </div>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Post do Dia das Mães" />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Post do Dia das Maes" />
             </div>
 
             <div className="space-y-2">
@@ -370,7 +395,7 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
                     setCaption(e.target.value);
                   }
                 }}
-                rows={12}
+                rows={16}
                 placeholder="Escreva a legenda do seu post..."
               />
               <div className="flex items-center justify-between">
@@ -411,72 +436,38 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
             <Separator />
 
             <Button className="w-full" disabled={saving || uploadPending} onClick={() => void save()}>
-              {saving ? "Salvando..." : "Salvar alterações"}
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner data-icon="inline-start" />
+                  Salvando...
+                </span>
+              ) : (
+                "Salvar alterações"
+              )}
             </Button>
           </div>
         </Card>
       </div>
 
-      <Dialog open={libraryDialogOpen} onOpenChange={setLibraryDialogOpen}>
-        <DialogContent className="sm:max-w-2xl" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Biblioteca de mídia</DialogTitle>
-          </DialogHeader>
-
-          <ScrollArea className="h-[60vh] pr-4">
-            {media.length === 0 ? (
-              <p className="text-muted-foreground py-4 text-sm">Nenhuma mídia disponível. Envie arquivos em Mídia.</p>
-            ) : (
-              <div className="grid grid-cols-4 gap-3 py-2">
-                {media.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={
-                      `relative aspect-square overflow-hidden rounded-lg border-2 transition-colors ${
-                        pickedMediaId === m.id
-                          ? "border-primary ring-2 ring-primary/30"
-                          : "border-border hover:border-muted-foreground/50"
-                      }`
-                    }
-                    onClick={() => setPickedMediaId(m.id)}
-                    title={m.fileName ?? m.id}
-                  >
-                    <img src={m.url} alt={m.fileName ?? "mídia"} className="h-full w-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLibraryDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => void confirmLibraryPick()} disabled={!pickedMediaId}>
-              Usar mídia
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MediaLibraryDialog
+        open={libraryDialogOpen}
+        onOpenChange={setLibraryDialogOpen}
+        media={media}
+        mediaLoading={false}
+        pickedMediaId={pickedMediaId}
+        onPickedMediaIdChange={setPickedMediaId}
+        onConfirmSelection={confirmLibraryPick}
+        confirmLabel="Usar mídia"
+      />
 
       <SchedulePostDialog
         open={scheduleModalOpen}
         onOpenChange={setScheduleModalOpen}
-        postId={null}
+        postId={props.initialPost.postId}
         defaultDate={scheduleDefault.dateForCalendar}
         defaultTimeHHmm={scheduleDefault.time}
         onSelectScheduledAtUtc={setScheduledAtUtc}
       />
-
-      {uploadPending ? (
-        <div className="pointer-events-none fixed bottom-4 right-4 z-50 rounded-md border bg-background/95 px-3 py-2 text-sm shadow">
-          <div className="flex items-center gap-2">
-            <Spinner className="size-4" />
-            <span>Enviando imagem...</span>
-          </div>
-        </div>
-      ) : null}
     </Page>
   );
 }

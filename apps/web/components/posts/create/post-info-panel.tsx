@@ -5,6 +5,7 @@ import { HelpCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -39,13 +40,16 @@ export function PostInfoPanel(props: {
   onCaptionChange: (v: string) => void;
   scheduledAtUtc: string | null;
   onOpenSchedule: () => void;
-  saving: boolean;
+  savingAction: "draft" | "schedule" | null;
   onSaveDraft: () => void;
   onSchedulePost: () => void;
   primaryActionLabel?: string;
   primaryActionHint?: string;
 }) {
   const captionLength = useMemo(() => props.caption.length, [props.caption]);
+  const isSavingDraft = props.savingAction === "draft";
+  const isSavingSchedule = props.savingAction === "schedule";
+  const hasPendingAction = props.savingAction !== null;
 
   return (
     <div className="space-y-5">
@@ -123,17 +127,31 @@ export function PostInfoPanel(props: {
         <Button
           variant="outline"
           className="flex-1"
-          disabled={props.saving}
+          disabled={hasPendingAction}
           onClick={props.onSaveDraft}
         >
-          {props.saving ? "Salvando..." : "Salvar para rascunho"}
+          {isSavingDraft ? (
+            <span className="inline-flex items-center gap-2">
+              <Spinner data-icon="inline-start" />
+              Salvando...
+            </span>
+          ) : (
+            "Salvar para rascunho"
+          )}
         </Button>
         <Button
           className="flex-1"
-          disabled={props.saving}
+          disabled={hasPendingAction}
           onClick={props.onSchedulePost}
         >
-          {props.saving ? "Salvando..." : props.primaryActionLabel ?? "Agendar post"}
+          {isSavingSchedule ? (
+            <span className="inline-flex items-center gap-2">
+              <Spinner data-icon="inline-start" />
+              Salvando...
+            </span>
+          ) : (
+            props.primaryActionLabel ?? "Agendar post"
+          )}
         </Button>
       </div>
       {props.primaryActionHint ? (

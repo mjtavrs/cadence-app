@@ -6,6 +6,7 @@ export function StepCropAdjust(props: {
   imageSrc: string | null;
   imageAlt?: string;
   aspectRatio: PreviewAspectRatio;
+  cropData?: CropData | null;
   onAspectRatioChange: (value: PreviewAspectRatio) => void;
   onCropChange: (crop: CropData) => void;
 }) {
@@ -16,6 +17,7 @@ export function StepCropAdjust(props: {
           imageSrc={props.imageSrc}
           imageAlt={props.imageAlt}
           aspectRatio={props.aspectRatio}
+          cropData={props.cropData}
           onAspectRatioChange={props.onAspectRatioChange}
           onCropChange={props.onCropChange}
           emptyPlaceholder="Nenhuma imagem selecionada"

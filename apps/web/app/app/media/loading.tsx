@@ -8,10 +8,10 @@ export default function Loading() {
       <PageHeader>
         <PageHeaderText>
           <PageTitle>
-            <Skeleton className="h-7 w-56" />
+            <span className="bg-muted inline-block h-7 w-56 animate-pulse rounded-md align-middle" />
           </PageTitle>
           <PageDescription>
-            <Skeleton className="h-4 w-80" />
+            <span className="bg-muted inline-block h-4 w-80 animate-pulse rounded-md align-middle" />
           </PageDescription>
         </PageHeaderText>
         <PageActions>
@@ -36,4 +36,3 @@ export default function Loading() {
     </Page>
   );
 }
-

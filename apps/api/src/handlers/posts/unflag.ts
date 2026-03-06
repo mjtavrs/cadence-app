@@ -1,29 +1,31 @@
 import type { APIGatewayProxyHandler } from "aws-lambda";
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
+import { canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
-import { MEDIA } from "../../media/limits";
-import { signGetObject } from "../../media/s3";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
-type MediaItem = {
-  PK: string;
-  SK: string;
-  mediaId: string;
-  contentType: string;
-  sizeBytes: number;
-  fileName?: string | null;
-  folderId?: string | null;
-  s3Key: string;
-  createdAt: string;
+type Body = {
+  workspaceId?: string;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
   if (!token) return unauthorized("Token ausente.");
 
-  const workspaceId = event.queryStringParameters?.workspaceId?.trim();
+  const postId = event.pathParameters?.id?.trim();
+  if (!postId) return badRequest("id é obrigatório.");
+
+  let body: Body = {};
+  try {
+    body = event.body ? (JSON.parse(event.body) as Body) : {};
+  } catch {
+    return badRequest("Body inválido (JSON).");
+  }
+
+  const workspaceId = body.workspaceId?.trim();
   if (!workspaceId) return badRequest("workspaceId é obrigatório.");
 
   try {
@@ -32,41 +34,34 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const membership = await assertWorkspaceMembership({ userId, workspaceId });
     if (!membership) return unauthorized("Sem acesso ao workspace.");
+    if (!canWrite(membership.role)) return unauthorized("Sem permissão para dessinalizar posts.");
 
     const ddb = getDocClient();
     const tableName = getTableName();
+    const key = { PK: `WORKSPACE#${workspaceId}`, SK: `POST#${postId}` };
 
-    const res = await ddb.send(
-      new QueryCommand({
+    const existing = await ddb.send(new GetCommand({ TableName: tableName, Key: key }));
+    if (!existing.Item) return badRequest("Post não encontrado.");
+
+    await ddb.send(
+      new UpdateCommand({
         TableName: tableName,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
-        ExpressionAttributeValues: {
-          ":pk": `WORKSPACE#${workspaceId}`,
-          ":skPrefix": "MEDIA#",
+        Key: key,
+        UpdateExpression:
+          "SET #updatedAt = :updatedAt REMOVE flaggedAt, flaggedByUserId, flaggedByLabel, flagReason",
+        ExpressionAttributeNames: {
+          "#updatedAt": "updatedAt",
         },
-        ScanIndexForward: false,
-        Limit: MEDIA.maxItemsPerWorkspace,
+        ExpressionAttributeValues: {
+          ":updatedAt": new Date().toISOString(),
+        },
       }),
     );
 
-    const items = (res.Items ?? []) as MediaItem[];
-    const withUrls = await Promise.all(
-      items.map(async (m) => ({
-        id: m.mediaId,
-        contentType: m.contentType,
-        sizeBytes: m.sizeBytes,
-        fileName: m.fileName ?? null,
-        folderId: m.folderId ?? null,
-        createdAt: m.createdAt,
-        url: await signGetObject({ key: m.s3Key, expiresSeconds: 60 * 10 }),
-      })),
-    );
-
-    return json(200, { items: withUrls });
+    return json(200, { ok: true });
   } catch (err: any) {
     const name = err?.name as string | undefined;
     if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");
-    return serverError("Não foi possível listar mídias agora.");
+    return serverError("Não foi possível dessinalizar o post agora.");
   }
 };
-

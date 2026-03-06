@@ -16,7 +16,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { SchedulePostDialog } from "@/components/posts/schedule-post-dialog";
-import { getNextQuarterSlotInTimeZone, formatDateForSection } from "@/lib/datetime";
+import { getNextQuarterSlotInTimeZone, formatDateAndTime, formatDateForSection } from "@/lib/datetime";
 import { PostCard, type PostListItem, type PostStatus } from "@/components/posts/post-card";
 import { PostsFiltersBar } from "@/components/posts/posts-filters-bar";
 import { PostPreviewSheet } from "@/components/posts/post-preview-sheet";
@@ -36,6 +36,9 @@ export type Post = {
   aspectRatio?: "original" | "1:1" | "4:5" | "16:9";
   cropX?: number;
   cropY?: number;
+  flaggedAt?: string;
+  flaggedByLabel?: string;
+  flagReason?: string;
 };
 
 function getErrorMessage(value: unknown) {
@@ -61,6 +64,7 @@ export function PostsClient(props: { initialItems: Post[] }) {
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [previewPostId, setPreviewPostId] = useState<string | null>(null);
+  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
 
   type ListResponse = { items: Post[] };
 
@@ -168,6 +172,16 @@ export function PostsClient(props: { initialItems: Post[] }) {
     return sortedGroups;
   }, [filteredItems]);
 
+  const flaggedPosts = useMemo(() => {
+    return filteredItems
+      .filter((post) => !!post.flaggedAt)
+      .sort((a, b) => {
+        const aTime = a.flaggedAt ? new Date(a.flaggedAt).getTime() : 0;
+        const bTime = b.flaggedAt ? new Date(b.flaggedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }, [filteredItems]);
+
   const isBusy = useMemo(() => postsQuery.isFetching, [postsQuery.isFetching]);
 
   const invalidate = async () => queryClient.invalidateQueries({ queryKey: ["posts"] });
@@ -199,6 +213,30 @@ export function PostsClient(props: { initialItems: Post[] }) {
       const res = await fetch(`/api/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
       const payload = (await res.json().catch(() => null)) as unknown;
       if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar post.");
+    },
+    onSuccess: invalidate,
+  });
+
+  const flagMutation = useMutation({
+    mutationFn: async (params: { postId: string; reason: string }) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(params.postId)}/flag`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: params.reason }),
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao sinalizar post.");
+    },
+    onSuccess: invalidate,
+  });
+
+  const unflagMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/posts/${encodeURIComponent(postId)}/unflag`, {
+        method: "POST",
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao dessinalizar post.");
     },
     onSuccess: invalidate,
   });
@@ -272,6 +310,34 @@ export function PostsClient(props: { initialItems: Post[] }) {
     }
   }
 
+  function scrollToPost(postId: string) {
+    const target = document.getElementById(`post-${postId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedPostId(postId);
+    window.setTimeout(() => {
+      setHighlightedPostId((current) => (current === postId ? null : current));
+    }, 1800);
+  }
+
+  async function flagPost(postId: string, reason: string) {
+    try {
+      await flagMutation.mutateAsync({ postId, reason });
+      toast.success("Post sinalizado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao sinalizar post.");
+    }
+  }
+
+  async function unflagPost(postId: string) {
+    try {
+      await unflagMutation.mutateAsync(postId);
+      toast.success("Sinalização removida.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao dessinalizar post.");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <SchedulePostDialog
@@ -301,6 +367,41 @@ export function PostsClient(props: { initialItems: Post[] }) {
         availableStatuses={availableStatuses}
       />
 
+      {flaggedPosts.length > 0 ? (
+        <section className="rounded-xl border border-amber-500/35 bg-amber-50/70 p-4 dark:bg-amber-500/10">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
+              Você possui posts sinalizados.
+            </h2>
+            <p className="text-sm text-amber-800/90 dark:text-amber-200/80">
+              Os seguintes posts foram sinalizados por membros da sua equipe para revisão:
+            </p>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-2">
+            {flaggedPosts.slice(0, 5).map((post) => (
+              <button
+                key={post.postId}
+                type="button"
+                onClick={() => scrollToPost(post.postId)}
+                className="w-full cursor-pointer rounded-lg border border-amber-500/20 bg-background/80 px-3 py-2 text-left text-sm transition-colors hover:bg-background"
+              >
+                <span className="font-medium">{post.title?.trim() || "Sem título"}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  • sinalizado em {post.flaggedAt ? formatDateAndTime(post.flaggedAt).replace(" • ", " às ") : "--"}
+                </span>
+              </button>
+            ))}
+            {flaggedPosts.length > 5 ? (
+              <p className="text-xs text-amber-900/75 dark:text-amber-200/75">
+                +{flaggedPosts.length - 5} posts sinalizados
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {postsQuery.isLoading ? (
         <p className="text-muted-foreground text-sm">Carregando...</p>
       ) : filteredItems.length === 0 ? (
@@ -326,10 +427,17 @@ export function PostsClient(props: { initialItems: Post[] }) {
               <div className="grid gap-4">
                 {posts.map((p) => {
                   return (
-                    <div key={p.postId}>
+                    <div key={p.postId} id={`post-${p.postId}`}>
                       <PostCard
                         item={p as unknown as PostListItem}
-                        isBusy={isBusy || deleteMutation.isPending || duplicateMutation.isPending}
+                        isBusy={
+                          isBusy ||
+                          deleteMutation.isPending ||
+                          duplicateMutation.isPending ||
+                          flagMutation.isPending ||
+                          unflagMutation.isPending
+                        }
+                        isHighlighted={highlightedPostId === p.postId}
                         onSubmit={() => void action(p.postId, "submit")}
                         onApprove={canManageApproval ? () => void action(p.postId, "approve") : undefined}
                         onSchedule={canManageApproval ? () => openSchedule(p.postId) : undefined}
@@ -342,6 +450,8 @@ export function PostsClient(props: { initialItems: Post[] }) {
                           duplicateMutation.mutate(p);
                         }}
                         onCaptionMore={() => setPreviewPostId(p.postId)}
+                        onFlag={(reason) => flagPost(p.postId, reason)}
+                        onUnflag={() => unflagPost(p.postId)}
                       />
                     </div>
                   );

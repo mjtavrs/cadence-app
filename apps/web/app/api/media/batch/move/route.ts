@@ -1,0 +1,48 @@
+import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
+import { cookies } from "next/headers";
+
+const ACCESS_COOKIE = "cadence_access";
+const WORKSPACE_COOKIE = "cadence_workspace";
+
+type Body = {
+  mediaIds?: string[];
+  folderId?: string | null;
+};
+
+export async function POST(req: Request) {
+  const store = await cookies();
+  const accessToken = store.get(ACCESS_COOKIE)?.value;
+  const workspaceId = store.get(WORKSPACE_COOKIE)?.value;
+
+  if (!accessToken) return NextResponse.json({ message: "Nao autenticado." }, { status: 401 });
+  if (!workspaceId) return NextResponse.json({ message: "Workspace nao selecionado." }, { status: 400 });
+
+  let body: Body = {};
+  try {
+    body = await req.json().catch(() => ({}));
+  } catch {
+    return NextResponse.json({ message: "Body invalido (JSON)." }, { status: 400 });
+  }
+
+  const mediaIds = body.mediaIds ?? [];
+  const folderId = typeof body.folderId === "string" ? body.folderId : null;
+
+  if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
+    return NextResponse.json({ message: "mediaIds e obrigatorio e deve ser um array nao vazio." }, { status: 400 });
+  }
+
+  const url = new URL("media/batch/move", env.apiBaseUrl);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ workspaceId, mediaIds, folderId }),
+  });
+
+  const payload = await res.json().catch(() => null);
+  return NextResponse.json(payload ?? { message: "Falha ao mover midias." }, { status: res.status });
+}
+

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { X, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -56,19 +55,7 @@ function truncateFileName(fileName: string, maxLength = 30) {
 }
 
 export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount = 0 }: UploadProgressPanelProps) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    if (uploads.length > 0) {
-      setIsVisible(true);
-    }
-  }, [uploads.length]);
-
   if (uploads.length === 0) {
-    if (isVisible) {
-      setTimeout(() => setIsVisible(false), 300);
-      return null;
-    }
     return null;
   }
 
@@ -78,19 +65,14 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
   const totalCount = uploads.length;
 
   const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(() => {
-      onClose?.();
-    }, 300);
+    onClose?.();
   };
 
   return (
       <div
         className={cn(
           "fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-background shadow-xl transition-all duration-300",
-          isVisible
-            ? "animate-in slide-in-from-bottom-4 fade-in-0"
-            : "animate-out slide-out-to-bottom-4 fade-out-0",
+          "animate-in slide-in-from-bottom-4 fade-in-0",
         )}
         style={{ bottom: selectedCount > 0 ? "100px" : "16px" }}
       >

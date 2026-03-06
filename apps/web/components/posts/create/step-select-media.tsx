@@ -3,15 +3,8 @@
 import { useRef } from "react";
 import { toast } from "sonner";
 
+import { MediaLibraryDialog } from "@/components/posts/media-library-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 
 export type MediaItem = {
@@ -54,10 +47,8 @@ export function StepSelectMedia(props: {
     props.onLibraryDialogOpenChange(true);
   }
 
-  function confirmLibraryPick() {
-    if (props.pickedMediaId) {
-      props.onSelectMedia(props.pickedMediaId);
-    }
+  function confirmLibraryPick(id: string) {
+    props.onSelectMedia(id);
     props.onConfirmLibraryPick();
   }
 
@@ -84,7 +75,7 @@ export function StepSelectMedia(props: {
         ) : selected ? (
           <img
             src={selected.url}
-            alt={selected.fileName ?? "Mídia selecionada"}
+            alt={selected.fileName ?? "Midia selecionada"}
             className="h-full w-full object-cover"
           />
         ) : (
@@ -104,44 +95,16 @@ export function StepSelectMedia(props: {
         </Button>
       </div>
 
-      <Dialog open={props.libraryDialogOpen} onOpenChange={props.onLibraryDialogOpenChange}>
-        <DialogContent className="sm:max-w-2xl" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Biblioteca de mídia</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="h-[60vh] pr-4">
-            {props.mediaLoading ? (
-              <p className="text-muted-foreground py-4 text-sm">Carregando...</p>
-            ) : props.media.length === 0 ? (
-              <p className="text-muted-foreground py-4 text-sm">Nenhuma mídia disponível. Envie arquivos em Mídia.</p>
-            ) : (
-              <div className="grid grid-cols-4 gap-3 py-2">
-                {props.media.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`relative aspect-square overflow-hidden rounded-lg border-2 transition-colors ${
-                      props.pickedMediaId === m.id ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-muted-foreground/50"
-                    }`}
-                    onClick={() => props.onPickedMediaIdChange(m.id)}
-                    title={m.fileName ?? m.id}
-                  >
-                    <img src={m.url} alt={m.fileName ?? "mídia"} className="h-full w-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => props.onLibraryDialogOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={confirmLibraryPick} disabled={!props.pickedMediaId}>
-              Abrir
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MediaLibraryDialog
+        open={props.libraryDialogOpen}
+        onOpenChange={props.onLibraryDialogOpenChange}
+        media={props.media}
+        mediaLoading={props.mediaLoading}
+        pickedMediaId={props.pickedMediaId}
+        onPickedMediaIdChange={props.onPickedMediaIdChange}
+        onConfirmSelection={confirmLibraryPick}
+        confirmLabel="Abrir"
+      />
     </div>
   );
 }

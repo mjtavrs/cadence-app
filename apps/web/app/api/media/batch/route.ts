@@ -14,6 +14,7 @@ type MediaItemInput = {
 };
 
 type Body = {
+  folderId?: string | null;
   items?: MediaItemInput[];
 };
 
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
     },
     body: JSON.stringify({
       workspaceId,
+      folderId: typeof body.folderId === "string" ? body.folderId : null,
       items: body.items,
     }),
   });

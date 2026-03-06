@@ -27,6 +27,7 @@ type CreateBody = {
   contentType?: string;
   sizeBytes?: number;
   fileName?: string;
+  folderId?: string | null;
 };
 
 export async function POST(req: Request) {
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
       contentType: body.contentType,
       sizeBytes: body.sizeBytes,
       fileName: body.fileName,
+      folderId: typeof body.folderId === "string" ? body.folderId : null,
     }),
   });
 

@@ -1,22 +1,17 @@
-import type { APIGatewayProxyHandler } from "aws-lambda";
+﻿import type { APIGatewayProxyHandler } from "aws-lambda";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
-import { MEDIA } from "../../media/limits";
-import { signGetObject } from "../../media/s3";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
-type MediaItem = {
-  PK: string;
-  SK: string;
-  mediaId: string;
-  contentType: string;
-  sizeBytes: number;
-  fileName?: string | null;
-  folderId?: string | null;
-  s3Key: string;
-  createdAt: string;
+type FolderRow = {
+  folderId: string;
+  name?: string | null;
+  parentFolderId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -24,7 +19,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   if (!token) return unauthorized("Token ausente.");
 
   const workspaceId = event.queryStringParameters?.workspaceId?.trim();
-  if (!workspaceId) return badRequest("workspaceId é obrigatório.");
+  if (!workspaceId) return badRequest("workspaceId e obrigatorio.");
 
   try {
     const authed = await getUserFromAccessToken(token);
@@ -42,31 +37,29 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
         ExpressionAttributeValues: {
           ":pk": `WORKSPACE#${workspaceId}`,
-          ":skPrefix": "MEDIA#",
+          ":skPrefix": "FOLDER#",
         },
-        ScanIndexForward: false,
-        Limit: MEDIA.maxItemsPerWorkspace,
       }),
     );
 
-    const items = (res.Items ?? []) as MediaItem[];
-    const withUrls = await Promise.all(
-      items.map(async (m) => ({
-        id: m.mediaId,
-        contentType: m.contentType,
-        sizeBytes: m.sizeBytes,
-        fileName: m.fileName ?? null,
-        folderId: m.folderId ?? null,
-        createdAt: m.createdAt,
-        url: await signGetObject({ key: m.s3Key, expiresSeconds: 60 * 10 }),
-      })),
-    );
+    const folders = ((res.Items ?? []) as FolderRow[])
+      .map((folder) => ({
+        id: folder.folderId,
+        name: folder.name?.trim() || "Pasta sem título",
+        parentFolderId: folder.parentFolderId ?? null,
+        createdAt: folder.createdAt ?? null,
+        updatedAt: folder.updatedAt ?? null,
+      }))
+      .sort((a, b) => {
+        const byName = a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+        if (byName !== 0) return byName;
+        return String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
+      });
 
-    return json(200, { items: withUrls });
-  } catch (err: any) {
-    const name = err?.name as string | undefined;
-    if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");
-    return serverError("Não foi possível listar mídias agora.");
+    return json(200, { items: folders });
+  } catch (err: unknown) {
+    const name = (err as { name?: string })?.name;
+    if (name === "NotAuthorizedException") return unauthorized("Sessao expirada. Faca login novamente.");
+    return serverError("Nao foi possivel listar as pastas agora.");
   }
 };
-

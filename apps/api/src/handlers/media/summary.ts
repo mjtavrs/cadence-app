@@ -1,22 +1,14 @@
 import type { APIGatewayProxyHandler } from "aws-lambda";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { MEDIA } from "../../media/limits";
-import { signGetObject } from "../../media/s3";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
-type MediaItem = {
-  PK: string;
-  SK: string;
-  mediaId: string;
-  contentType: string;
-  sizeBytes: number;
-  fileName?: string | null;
-  folderId?: string | null;
-  s3Key: string;
-  createdAt: string;
+type MediaSummaryItem = {
+  sizeBytes?: number;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -36,37 +28,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const ddb = getDocClient();
     const tableName = getTableName();
 
-    const res = await ddb.send(
-      new QueryCommand({
-        TableName: tableName,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
-        ExpressionAttributeValues: {
-          ":pk": `WORKSPACE#${workspaceId}`,
-          ":skPrefix": "MEDIA#",
-        },
-        ScanIndexForward: false,
-        Limit: MEDIA.maxItemsPerWorkspace,
-      }),
-    );
+    let itemsUsed = 0;
+    let bytesUsed = 0;
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
 
-    const items = (res.Items ?? []) as MediaItem[];
-    const withUrls = await Promise.all(
-      items.map(async (m) => ({
-        id: m.mediaId,
-        contentType: m.contentType,
-        sizeBytes: m.sizeBytes,
-        fileName: m.fileName ?? null,
-        folderId: m.folderId ?? null,
-        createdAt: m.createdAt,
-        url: await signGetObject({ key: m.s3Key, expiresSeconds: 60 * 10 }),
-      })),
-    );
+    do {
+      const res = await ddb.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :skPrefix)",
+          ExpressionAttributeValues: {
+            ":pk": `WORKSPACE#${workspaceId}`,
+            ":skPrefix": "MEDIA#",
+          },
+          ProjectionExpression: "sizeBytes",
+          ExclusiveStartKey: lastEvaluatedKey,
+        }),
+      );
 
-    return json(200, { items: withUrls });
+      for (const item of (res.Items ?? []) as MediaSummaryItem[]) {
+        itemsUsed += 1;
+        bytesUsed += typeof item.sizeBytes === "number" ? item.sizeBytes : 0;
+      }
+
+      lastEvaluatedKey = res.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return json(200, {
+      itemsUsed,
+      itemsLimit: MEDIA.maxItemsPerWorkspace,
+      bytesUsed,
+      bytesLimit: MEDIA.maxItemsPerWorkspace * MEDIA.maxBytes,
+    });
   } catch (err: any) {
     const name = err?.name as string | undefined;
     if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");
-    return serverError("Não foi possível listar mídias agora.");
+    return serverError("Não foi possível carregar o resumo de armazenamento agora.");
   }
 };
-

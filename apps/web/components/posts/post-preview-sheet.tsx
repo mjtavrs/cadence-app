@@ -82,6 +82,7 @@ export function PostPreviewSheet(props: PostPreviewSheetProps) {
   const firstLine = post.caption.split("\n")[0];
   const captionOneLine = firstLine.length > 80 ? `${firstLine.slice(0, 80)}` : firstLine;
   const needsTruncate = post.caption.length > 80 || post.caption.includes("\n");
+  const isOriginalAspect = (post.aspectRatio ?? "1:1") === "original";
 
   function getAspectRatioClass(): string {
     const ratio = post.aspectRatio ?? "1:1";
@@ -161,11 +162,20 @@ export function PostPreviewSheet(props: PostPreviewSheetProps) {
                     <span className="text-muted-foreground text-sm">Carregando...</span>
                   </div>
                 ) : mediaItem ? (
-                  <div className={`w-full overflow-hidden rounded-lg ${getAspectRatioClass()}`}>
+                  <div
+                    className={cn(
+                      "w-full overflow-hidden rounded-lg",
+                      getAspectRatioClass(),
+                      isOriginalAspect ? "bg-white" : "",
+                    )}
+                  >
                     <img
                       src={mediaItem.url}
                       alt={mediaItem.fileName ?? "Preview"}
-                      className="w-full h-full object-cover"
+                      className={cn(
+                        "w-full",
+                        isOriginalAspect ? "h-auto object-contain" : "h-full object-cover",
+                      )}
                       style={{
                         objectPosition: `${(post.cropX ?? 0.5) * 100}% ${(post.cropY ?? 0.5) * 100}%`,
                       }}

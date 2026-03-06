@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,11 +19,24 @@ export type MediaItem = {
   contentType: string;
   sizeBytes: number;
   fileName: string | null;
+  folderId?: string | null;
   createdAt: string;
+};
+
+export type MediaFolder = {
+  id: string;
+  name: string;
+  parentFolderId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 type MediaListResponse = {
   items: MediaItem[];
+};
+
+type FolderListResponse = {
+  items: MediaFolder[];
 };
 
 type PresignResponse = {
@@ -104,8 +117,15 @@ function uploadFileWithProgress(
 async function loadMedia() {
   const res = await fetch("/api/media", { cache: "no-store" });
   const payload = (await res.json().catch(() => null)) as unknown;
-  if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar mídias.");
+  if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar mÃ­dias.");
   const data = payload as MediaListResponse;
+  return data.items ?? [];
+}
+async function loadFolders() {
+  const res = await fetch("/api/media/folders", { cache: "no-store" });
+  const payload = (await res.json().catch(() => null)) as unknown;
+  if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar pastas.");
+  const data = payload as FolderListResponse;
   return data.items ?? [];
 }
 
@@ -113,9 +133,20 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
   const queryClient = useQueryClient();
 
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [uploadProgress, setUploadProgress] = useState<Map<string, UploadProgress>>(new Map());
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+
+  async function refreshMediaQueries() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["media"] }),
+      queryClient.invalidateQueries({ queryKey: ["media-storage-summary"] }),
+    ]);
+  }
+
+  async function refreshFolderQueries() {
+    await queryClient.invalidateQueries({ queryKey: ["media-folders"] });
+  }
 
   const mediaQuery = useQuery({
     queryKey: ["media"],
@@ -124,11 +155,19 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     staleTime: 30_000,
   });
 
+  const foldersQuery = useQuery({
+    queryKey: ["media-folders"],
+    queryFn: loadFolders,
+    staleTime: 30_000,
+  });
+
   const items = mediaQuery.data ?? [];
+  const folders = foldersQuery.data ?? [];
   const canUpload = useMemo(() => items.length < 30, [items.length]);
 
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async (params: { file: File; folderId?: string | null }) => {
+      const file = params.file;
       const presignRes = await fetch("/api/media/presign", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -165,16 +204,17 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
           contentType: file.type,
           sizeBytes: file.size,
           fileName: file.name,
+          folderId: params.folderId ?? null,
         }),
       });
 
       const createPayload = (await createRes.json().catch(() => null)) as unknown;
       if (!createRes.ok) {
-        throw new Error(getErrorMessage(createPayload) ?? "Falha ao registrar mídia.");
+        throw new Error(getErrorMessage(createPayload) ?? "Falha ao registrar mÃ­dia.");
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["media"] });
+      await refreshMediaQueries();
     },
   });
 
@@ -182,14 +222,26 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/media/${encodeURIComponent(id)}`, { method: "DELETE" });
       const payload = (await res.json().catch(() => null)) as unknown;
-      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar mídia.");
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar mÃ­dia.");
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["media"] });
-      toast.success("Mídia excluída.");
+    onSuccess: async (_data, id) => {
+      await refreshMediaQueries();
+      toast.success("MÃ­dia excluÃ­da.");
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
-    onSettled: () => {
-      setDeletingId(null);
+    onError: () => {
+      // noop: estado Ã© limpo no onSettled
+    },
+    onSettled: (_data, _error, id) => {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
   });
 
@@ -201,14 +253,33 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         body: JSON.stringify({ mediaIds: ids }),
       });
       const payload = (await res.json().catch(() => null)) as unknown;
-      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir mídias.");
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir mÃ­dias.");
       const data = payload as { deleted?: string[] };
       return data.deleted ?? [];
     },
     onSuccess: async (deleted) => {
-      await queryClient.invalidateQueries({ queryKey: ["media"] });
+      await refreshMediaQueries();
       const n = deleted.length;
-      toast.success(n === 1 ? "Mídia excluída." : `${n} mídias excluídas.`);
+      toast.success(n === 1 ? "MÃ­dia excluÃ­da." : `${n} mÃ­dias excluÃ­das.`);
+    },
+  });
+
+  const moveBatchMutation = useMutation({
+    mutationFn: async (params: { mediaIds: string[]; folderId?: string | null }) => {
+      const res = await fetch("/api/media/batch/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaIds: params.mediaIds, folderId: params.folderId ?? null }),
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao mover mídias.");
+      const data = payload as { moved?: string[] };
+      return data.moved ?? [];
+    },
+    onSuccess: async (moved) => {
+      await refreshMediaQueries();
+      const n = moved.length;
+      toast.success(n === 1 ? "Mídia movida." : `${n} mídias movidas.`);
     },
   });
 
@@ -224,16 +295,66 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao renomear.");
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["media"] });
+      await refreshMediaQueries();
       toast.success("Arquivo renomeado.");
     },
   });
 
-  async function onPickFile(file: File) {
+  const createFolderMutation = useMutation({
+    mutationFn: async (params: { name: string; parentFolderId?: string | null }) => {
+      const res = await fetch("/api/media/folders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: params.name,
+          parentFolderId: params.parentFolderId ?? null,
+        }),
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao criar pasta.");
+      return payload as MediaFolder;
+    },
+    onSuccess: async () => {
+      await refreshFolderQueries();
+      toast.success("Pasta criada.");
+    },
+  });
+
+  const renameFolderMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const res = await fetch(`/api/media/folders/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao renomear pasta.");
+    },
+    onSuccess: async () => {
+      await refreshFolderQueries();
+      toast.success("Pasta renomeada.");
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/media/folders/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir pasta.");
+    },
+    onSuccess: async () => {
+      await Promise.all([refreshFolderQueries(), refreshMediaQueries()]);
+      toast.success("Pasta excluida.");
+    },
+  });
+
+  async function onPickFile(file: File, options?: { folderId?: string | null }) {
     setError(null);
 
     if (!allowedTypes.has(file.type)) {
-      setError("Formato não suportado. Use JPEG, PNG, WEBP ou HEIC.");
+      setError("Formato nÃ£o suportado. Use JPEG, PNG, WEBP ou HEIC.");
       return;
     }
     if (file.size > maxBytes) {
@@ -246,13 +367,16 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     }
 
     try {
-      await uploadMutation.mutateAsync(file);
+      await uploadMutation.mutateAsync({
+        file,
+        folderId: options?.folderId ?? null,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao enviar imagem.");
     }
   }
 
-  async function onPickFiles(files: File[]) {
+  async function onPickFiles(files: File[], options?: { folderId?: string | null }) {
     setError(null);
     const progressMap = new Map<string, UploadProgress>();
 
@@ -271,13 +395,13 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       });
 
       if (!allowedTypes.has(file.type)) {
-        errors.push({ index: i, fileName: file.name, message: "Formato não suportado." });
+        errors.push({ index: i, fileName: file.name, message: "Formato nÃ£o suportado." });
         progressMap.set(fileId, {
           fileId,
           fileName: file.name,
           status: "error",
           progress: 0,
-          error: "Formato não suportado.",
+          error: "Formato nÃ£o suportado.",
         });
         continue;
       }
@@ -300,14 +424,14 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
     if (validFiles.length === 0) {
       const errorMessages = errors.map((e) => `${e.fileName}: ${e.message}`).join("\n");
-      setError(`Nenhum arquivo válido.\n${errorMessages}`);
+      setError(`Nenhum arquivo vÃ¡lido.\n${errorMessages}`);
       return;
     }
 
     const availableSlots = 30 - items.length;
     if (validFiles.length > availableSlots) {
       setError(
-        `Limite de 30 imagens atingido. Você pode fazer upload de ${availableSlots} arquivo(s).`,
+        `Limite de 30 imagens atingido. VocÃª pode fazer upload de ${availableSlots} arquivo(s).`,
       );
       for (const { fileId } of validFiles) {
         progressMap.set(fileId, {
@@ -460,13 +584,14 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          folderId: options?.folderId ?? null,
           items: successfulUploads,
         }),
       });
 
       const createPayload = (await createRes.json().catch(() => null)) as unknown;
       if (!createRes.ok) {
-        const errorMsg = getErrorMessage(createPayload) ?? "Falha ao registrar mídia.";
+        const errorMsg = getErrorMessage(createPayload) ?? "Falha ao registrar mÃ­dia.";
         setError(errorMsg);
         return;
       }
@@ -478,7 +603,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         toast.error(`Alguns arquivos falharam ao serem registrados:\n${errorMessages}`);
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["media"] });
+      await refreshMediaQueries();
       await queryClient.refetchQueries({ queryKey: ["media"] });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao enviar arquivos.");
@@ -499,11 +624,20 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
   async function deleteItem(id: string) {
     setError(null);
-    setDeletingId(id);
+    setDeletingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
     try {
       await deleteMutation.mutateAsync(id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao deletar mídia.");
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setError(e instanceof Error ? e.message : "Falha ao deletar mÃ­dia.");
     }
   }
 
@@ -513,7 +647,18 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     try {
       await deleteBatchMutation.mutateAsync(ids);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao excluir mídias.");
+      setError(e instanceof Error ? e.message : "Falha ao excluir mÃ­dias.");
+    }
+  }
+
+  async function moveItemsToFolder(ids: string[], folderId: string | null) {
+    if (ids.length === 0) return;
+    setError(null);
+    try {
+      await moveBatchMutation.mutateAsync({ mediaIds: ids, folderId });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao mover mídias.");
+      throw e;
     }
   }
 
@@ -523,10 +668,47 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       await renameMutation.mutateAsync({ id, fileName });
     } catch (e) {
       if (e instanceof Error && e.message === "UNAVAILABLE") {
-        toast.info("Renomear estará disponível em breve.");
+        toast.info("Renomear estarÃ¡ disponÃ­vel em breve.");
         return;
       }
       setError(e instanceof Error ? e.message : "Falha ao renomear.");
+    }
+  }
+
+  async function createFolder(name: string, parentFolderId?: string | null) {
+    setError(null);
+    try {
+      const payload = await createFolderMutation.mutateAsync({
+        name,
+        parentFolderId: parentFolderId ?? null,
+      });
+      return payload;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Falha ao criar pasta.";
+      setError(message);
+      throw e;
+    }
+  }
+
+  async function renameFolder(id: string, name: string) {
+    setError(null);
+    try {
+      await renameFolderMutation.mutateAsync({ id, name });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Falha ao renomear pasta.";
+      setError(message);
+      throw e;
+    }
+  }
+
+  async function deleteFolder(id: string) {
+    setError(null);
+    try {
+      await deleteFolderMutation.mutateAsync(id);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Falha ao excluir pasta.";
+      setError(message);
+      throw e;
     }
   }
 
@@ -560,29 +742,44 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
   const isBusy =
     mediaQuery.isFetching ||
+    foldersQuery.isFetching ||
     uploadMutation.isPending ||
     deleteMutation.isPending ||
     deleteBatchMutation.isPending ||
-    renameMutation.isPending;
+    moveBatchMutation.isPending ||
+    renameMutation.isPending ||
+    createFolderMutation.isPending ||
+    renameFolderMutation.isPending ||
+    deleteFolderMutation.isPending;
 
   return {
     items,
+    folders,
     error,
     setError,
     canUpload,
     isBusy,
     isLoading: mediaQuery.isLoading,
     isFetching: mediaQuery.isFetching,
+    isLoadingFolders: foldersQuery.isLoading,
+    isFetchingFolders: foldersQuery.isFetching,
     uploadPending: uploadMutation.isPending,
-    deletingId,
+    deletingIds,
     uploadProgress: Array.from(uploadProgress.values()),
     isDeletingBatch: deleteBatchMutation.isPending,
+    isCreatingFolder: createFolderMutation.isPending,
+    isRenamingFolder: renameFolderMutation.isPending,
+    isDeletingFolder: deleteFolderMutation.isPending,
     onPickFile,
     onPickFiles,
     cancelUpload,
     deleteItem,
     deleteBatch,
+    moveItemsToFolder,
     renameItem,
+    createFolder,
+    renameFolder,
+    deleteFolder,
   } as const;
 }
 

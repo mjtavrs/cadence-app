@@ -203,6 +203,31 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const mediaSummaryFn = new NodejsFunction(this, "MediaSummaryFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/summary.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const listMediaFoldersFn = new NodejsFunction(this, "ListMediaFoldersFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/folders-list.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const createMediaFolderFn = new NodejsFunction(this, "CreateMediaFolderFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/folders-create.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const renameMediaFolderFn = new NodejsFunction(this, "RenameMediaFolderFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/folders-rename.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const deleteMediaFolderFn = new NodejsFunction(this, "DeleteMediaFolderFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/folders-delete.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const deleteMediaFn = new NodejsFunction(this, "DeleteMediaFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/delete.ts"),
       ...apiHandlerDefaults,
@@ -210,6 +235,11 @@ export class CadenceStack extends Stack {
 
     const deleteMediaBatchFn = new NodejsFunction(this, "DeleteMediaBatchFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/delete-batch.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const moveMediaBatchFn = new NodejsFunction(this, "MoveMediaBatchFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/media/move-batch.ts"),
       ...apiHandlerDefaults,
     });
 
@@ -278,6 +308,16 @@ export class CadenceStack extends Stack {
       ...apiHandlerDefaults,
     });
 
+    const flagPostFn = new NodejsFunction(this, "FlagPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/flag.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const unflagPostFn = new NodejsFunction(this, "UnflagPostFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/unflag.ts"),
+      ...apiHandlerDefaults,
+    });
+
     const resolvePostCodeFn = new NodejsFunction(this, "ResolvePostCodeFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/posts/resolve-code.ts"),
       ...apiHandlerDefaults,
@@ -296,8 +336,14 @@ export class CadenceStack extends Stack {
       createMediaFn,
       createMediaBatchFn,
       listMediaFn,
+      mediaSummaryFn,
+      listMediaFoldersFn,
+      createMediaFolderFn,
+      renameMediaFolderFn,
+      deleteMediaFolderFn,
       deleteMediaFn,
       deleteMediaBatchFn,
+      moveMediaBatchFn,
       updateMediaFn,
       createPostFn,
       listPostsFn,
@@ -311,6 +357,8 @@ export class CadenceStack extends Stack {
       deletePostFn,
       duplicatePostFn,
       revertToDraftPostFn,
+      flagPostFn,
+      unflagPostFn,
       resolvePostCodeFn,
     ]) {
       fn.addToRolePolicy(
@@ -331,8 +379,14 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(createMediaFn);
     appTable.grantReadWriteData(createMediaBatchFn);
     appTable.grantReadWriteData(listMediaFn);
+    appTable.grantReadWriteData(mediaSummaryFn);
+    appTable.grantReadWriteData(listMediaFoldersFn);
+    appTable.grantReadWriteData(createMediaFolderFn);
+    appTable.grantReadWriteData(renameMediaFolderFn);
+    appTable.grantReadWriteData(deleteMediaFolderFn);
     appTable.grantReadWriteData(deleteMediaFn);
     appTable.grantReadWriteData(deleteMediaBatchFn);
+    appTable.grantReadWriteData(moveMediaBatchFn);
     appTable.grantReadWriteData(updateMediaFn);
     appTable.grantReadWriteData(createPostFn);
     appTable.grantReadWriteData(listPostsFn);
@@ -346,6 +400,8 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(deletePostFn);
     appTable.grantReadWriteData(duplicatePostFn);
     appTable.grantReadWriteData(revertToDraftPostFn);
+    appTable.grantReadWriteData(flagPostFn);
+    appTable.grantReadWriteData(unflagPostFn);
     appTable.grantReadWriteData(resolvePostCodeFn);
 
     mediaBucket.grantPut(presignMediaFn);
@@ -390,10 +446,18 @@ export class CadenceStack extends Stack {
     mediaPresign.addMethod("POST", new apigateway.LambdaIntegration(presignMediaFn));
     mediaPresign.addResource("batch").addMethod("POST", new apigateway.LambdaIntegration(presignMediaBatchFn));
     media.addMethod("POST", new apigateway.LambdaIntegration(createMediaFn));
+    media.addResource("summary").addMethod("GET", new apigateway.LambdaIntegration(mediaSummaryFn));
     const mediaBatch = media.addResource("batch");
     mediaBatch.addMethod("POST", new apigateway.LambdaIntegration(createMediaBatchFn));
     mediaBatch.addResource("delete").addMethod("POST", new apigateway.LambdaIntegration(deleteMediaBatchFn));
+    mediaBatch.addResource("move").addMethod("POST", new apigateway.LambdaIntegration(moveMediaBatchFn));
     media.addMethod("GET", new apigateway.LambdaIntegration(listMediaFn));
+    const mediaFolders = media.addResource("folders");
+    mediaFolders.addMethod("GET", new apigateway.LambdaIntegration(listMediaFoldersFn));
+    mediaFolders.addMethod("POST", new apigateway.LambdaIntegration(createMediaFolderFn));
+    const mediaFolderById = mediaFolders.addResource("{id}");
+    mediaFolderById.addMethod("PATCH", new apigateway.LambdaIntegration(renameMediaFolderFn));
+    mediaFolderById.addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFolderFn));
     const mediaById = media.addResource("{id}");
     mediaById.addMethod("DELETE", new apigateway.LambdaIntegration(deleteMediaFn));
     mediaById.addMethod("PATCH", new apigateway.LambdaIntegration(updateMediaFn));
@@ -413,6 +477,8 @@ export class CadenceStack extends Stack {
     postById.addResource("cancel").addMethod("POST", new apigateway.LambdaIntegration(cancelPostFn));
     postById.addResource("retry").addMethod("POST", new apigateway.LambdaIntegration(retryPostFn));
     postById.addResource("revert-to-draft").addMethod("POST", new apigateway.LambdaIntegration(revertToDraftPostFn));
+    postById.addResource("flag").addMethod("POST", new apigateway.LambdaIntegration(flagPostFn));
+    postById.addResource("unflag").addMethod("POST", new apigateway.LambdaIntegration(unflagPostFn));
 
     new CfnOutput(this, "Stage", { value: props.stage });
     new CfnOutput(this, "Region", { value: Stack.of(this).region });

@@ -29,6 +29,11 @@ export type PostItem = {
 
   updatedAt: string;
 
+  flaggedAt?: string;
+  flaggedByUserId?: string;
+  flaggedByLabel?: string;
+  flagReason?: string;
+
   scheduledAtUtc?: string;
   weekBucket?: string;
   monthBucket?: string;

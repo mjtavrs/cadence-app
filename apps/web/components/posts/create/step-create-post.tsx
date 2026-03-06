@@ -19,7 +19,7 @@ export function StepCreatePost(props: {
   onCaptionChange: (v: string) => void;
   scheduledAtUtc: string | null;
   onOpenSchedule: () => void;
-  saving: boolean;
+  savingAction: "draft" | "schedule" | null;
   onSaveDraft: () => void;
   onSchedulePost: () => void;
   primaryActionLabel?: string;
@@ -40,6 +40,7 @@ export function StepCreatePost(props: {
             imageSrc={props.imageSrc}
             imageAlt={props.imageAlt}
             aspectRatio={props.aspectRatio}
+            cropData={props.cropData}
             showAspectRatioControl={false}
             emptyPlaceholder="Nenhuma imagem selecionada"
           />
@@ -62,7 +63,7 @@ export function StepCreatePost(props: {
           onCaptionChange={props.onCaptionChange}
           scheduledAtUtc={props.scheduledAtUtc}
           onOpenSchedule={props.onOpenSchedule}
-          saving={props.saving}
+          savingAction={props.savingAction}
           onSaveDraft={props.onSaveDraft}
           onSchedulePost={props.onSchedulePost}
           primaryActionLabel={props.primaryActionLabel}

@@ -5,42 +5,40 @@ import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token"
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
-import { MEDIA } from "../../media/limits";
 
-type CreateBody = {
+type Body = {
   workspaceId?: string;
-  mediaId?: string;
-  s3Key?: string;
-  contentType?: string;
-  sizeBytes?: number;
-  fileName?: string;
-  folderId?: string | null;
+  name?: string;
+  parentFolderId?: string | null;
 };
+
+const DEFAULT_FOLDER_NAME = "Pasta sem título";
+const MAX_FOLDER_NAME_LENGTH = 80;
+
+function newFolderId() {
+  return `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
   if (!token) return unauthorized("Token ausente.");
 
-  let body: CreateBody = {};
+  let body: Body = {};
   try {
-    body = event.body ? (JSON.parse(event.body) as CreateBody) : {};
+    body = event.body ? (JSON.parse(event.body) as Body) : {};
   } catch {
     return badRequest("Body invalido (JSON).");
   }
 
   const workspaceId = body.workspaceId?.trim();
-  const mediaId = body.mediaId?.trim();
-  const s3Key = body.s3Key?.trim();
-  const contentType = body.contentType?.trim();
-  const sizeBytes = body.sizeBytes;
-  const fileName = body.fileName?.trim() || null;
-  const folderId = typeof body.folderId === "string" ? body.folderId.trim() : null;
+  const name = body.name?.trim() || DEFAULT_FOLDER_NAME;
+  const parentFolderId = typeof body.parentFolderId === "string" ? body.parentFolderId.trim() : null;
 
   if (!workspaceId) return badRequest("workspaceId e obrigatorio.");
-  if (!mediaId) return badRequest("mediaId e obrigatorio.");
-  if (!s3Key) return badRequest("s3Key e obrigatorio.");
-  if (!contentType || !MEDIA.allowedContentTypes.has(contentType)) return badRequest("contentType invalido.");
-  if (typeof sizeBytes !== "number" || sizeBytes <= 0 || sizeBytes > MEDIA.maxBytes) return badRequest("sizeBytes invalido.");
+  if (!name) return badRequest("name e obrigatorio.");
+  if (name.length > MAX_FOLDER_NAME_LENGTH) {
+    return badRequest(`name deve ter no maximo ${MAX_FOLDER_NAME_LENGTH} caracteres.`);
+  }
 
   try {
     const authed = await getUserFromAccessToken(token);
@@ -52,45 +50,52 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const ddb = getDocClient();
     const tableName = getTableName();
 
-    if (folderId) {
-      const folderRes = await ddb.send(
+    if (parentFolderId) {
+      const parentRes = await ddb.send(
         new GetCommand({
           TableName: tableName,
           Key: {
             PK: `WORKSPACE#${workspaceId}`,
-            SK: `FOLDER#${folderId}`,
+            SK: `FOLDER#${parentFolderId}`,
           },
           ProjectionExpression: "folderId",
         }),
       );
 
-      if (!folderRes.Item) return badRequest("Pasta nao encontrada.");
+      if (!parentRes.Item) return badRequest("Pasta pai nao encontrada.");
     }
 
-    const createdAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    const folderId = newFolderId();
 
     await ddb.send(
       new PutCommand({
         TableName: tableName,
         Item: {
           PK: `WORKSPACE#${workspaceId}`,
-          SK: `MEDIA#${createdAt}#${mediaId}`,
-          mediaId,
-          workspaceId,
-          contentType,
-          sizeBytes,
-          fileName,
+          SK: `FOLDER#${folderId}`,
           folderId,
-          s3Key,
-          createdAt,
+          workspaceId,
+          name,
+          parentFolderId,
+          createdAt: now,
+          updatedAt: now,
+          createdByUserId: userId,
         },
+        ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
       }),
     );
 
-    return json(201, { ok: true, mediaId });
+    return json(201, {
+      id: folderId,
+      name,
+      parentFolderId,
+      createdAt: now,
+      updatedAt: now,
+    });
   } catch (err: unknown) {
     const name = (err as { name?: string })?.name;
     if (name === "NotAuthorizedException") return unauthorized("Sessao expirada. Faca login novamente.");
-    return serverError("Nao foi possivel registrar a midia agora.");
+    return serverError("Nao foi possivel criar a pasta agora.");
   }
 };

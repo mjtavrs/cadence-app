@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +31,7 @@ import {
   getNextQuarterSlotInTimeZone,
 } from "@/lib/datetime";
 import { useWorkspaceRole } from "@/hooks/use-workspace-role";
+import { preloadEmojiCatalog } from "@/lib/emoji-catalog";
 import { cn } from "@/lib/utils";
 
 type MediaListResponse = { items: MediaItem[] };
@@ -78,7 +79,7 @@ export default function NewPostPage() {
   const [caption, setCaption] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<"draft" | "schedule" | null>(null);
   const [scheduledAtUtc, setScheduledAtUtc] = useState<string | null>(prefilledScheduledAtUtc);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
@@ -87,6 +88,10 @@ export default function NewPostPage() {
   const [cropData, setCropData] = useState<CropData | null>(null);
   const [transitionDirection, setTransitionDirection] = useState<"forward" | "backward">("forward");
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
+
+  useEffect(() => {
+    preloadEmojiCatalog();
+  }, []);
 
   const scheduleDefault = useMemo(() => {
     if (scheduledAtUtc) {
@@ -203,7 +208,7 @@ export default function NewPostPage() {
       return;
     }
 
-    setSaving(true);
+    setSavingAction(asDraft ? "draft" : "schedule");
     const body: Record<string, unknown> = {
       title: normalizedTitle || undefined,
       caption: normalizedCaption || undefined,
@@ -223,27 +228,31 @@ export default function NewPostPage() {
       }
     }
 
-    const res = await fetch("/api/posts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const payload = (await res.json().catch(() => null)) as unknown;
-    if (!res.ok) {
-      toast.error(getErrorMessage(payload) ?? "Falha ao criar post.");
-      setSaving(false);
-      return;
-    }
-    setSaving(false);
+    try {
+      const res = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok) {
+        toast.error(getErrorMessage(payload) ?? "Falha ao criar post.");
+        return;
+      }
 
-    if (asDraft) {
-      toast.success("Rascunho salvo.");
-    } else if (canManageApproval) {
-      toast.success("Post agendado.");
-    } else {
-      toast.success("Post enviado para aprovação.");
+      if (asDraft) {
+        toast.success("Rascunho salvo.");
+      } else if (canManageApproval) {
+        toast.success("Post agendado.");
+      } else {
+        toast.success("Post enviado para aprovação.");
+      }
+      router.replace("/app/posts");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao criar post.");
+    } finally {
+      setSavingAction(null);
     }
-    router.replace("/app/posts");
   }
 
   const canAdvance = step === "select" ? !!selectedMediaId : true;
@@ -283,7 +292,7 @@ export default function NewPostPage() {
               onCaptionChange={setCaption}
               scheduledAtUtc={scheduledAtUtc}
               onOpenSchedule={() => setScheduleModalOpen(true)}
-              saving={saving}
+              savingAction={savingAction}
               onSaveDraft={() => void savePost(true)}
               onSchedulePost={() => void savePost(false)}
               primaryActionLabel={canManageApproval ? "Agendar post" : "Enviar para aprovação"}
@@ -325,6 +334,7 @@ export default function NewPostPage() {
                 imageSrc={selected?.url ?? null}
                 imageAlt={selected?.fileName ?? undefined}
                 aspectRatio={previewAspect}
+                cropData={cropData}
                 onAspectRatioChange={(newAspect) => {
                   setPreviewAspect(newAspect);
                   setCropData(null);
@@ -369,4 +379,5 @@ export default function NewPostPage() {
     </Page>
   );
 }
+
 

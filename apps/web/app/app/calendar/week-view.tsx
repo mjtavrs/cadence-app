@@ -209,12 +209,31 @@ export function WeekCalendarView(props: {
   const contentHeight = TOP_PADDING + Math.round(totalMinutes * PX_PER_MIN) + EVENT_HEIGHT + 2;
   const todayKey = useMemo(() => recifeDayKeyFromUtcDate(new Date()) ?? "", []);
 
+  function clearSelectedEvent() {
+    setSelectedEventId(null);
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.dataset.eventChip === "true") {
+      active.blur();
+    }
+  }
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedEventId(null);
+      if (event.key === "Escape") clearSelectedEvent();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-event-chip="true"]')) return;
+      clearSelectedEvent();
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("mousedown", onPointerDown, true);
+    };
   }, []);
 
   function openPreview(p: Post) {
@@ -360,12 +379,6 @@ export function WeekCalendarView(props: {
           <div
             className={cn("grid")}
             style={{ gridTemplateColumns: `${LEFT_COL_WIDTH}px 1fr` }}
-            onMouseDownCapture={(event) => {
-              if (event.button !== 0) return;
-              const target = event.target as HTMLElement | null;
-              if (target?.closest('[data-event-chip="true"]')) return;
-              setSelectedEventId(null);
-            }}
           >
             <div className="sticky left-0 z-10 border-r border-border/60 bg-background/80 backdrop-blur">
               <div className="relative" style={{ height: contentHeight }}>

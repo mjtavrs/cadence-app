@@ -28,10 +28,10 @@ export function useWorkspaces() {
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<string | null>(null);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/workspaces");
+    const res = await fetch("/api/workspaces", { signal });
     const payload = (await res.json().catch(() => null)) as unknown;
     if (!res.ok) {
       setError(getErrorMessage(payload) ?? "Falha ao carregar workspaces.");
@@ -44,9 +44,9 @@ export function useWorkspaces() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch("/api/workspaces")
+    const controller = new AbortController();
+
+    fetch("/api/workspaces", { signal: controller.signal })
       .then((res) => Promise.all([res.ok, res.json().catch(() => null)]))
       .then(([ok, payload]) => {
         if (cancelled) return;
@@ -59,14 +59,16 @@ export function useWorkspaces() {
         setData(value);
         setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setError("Falha ao carregar workspaces.");
-          setLoading(false);
-        }
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if ((err as { name?: string })?.name === "AbortError") return;
+        setError("Falha ao carregar workspaces.");
+        setLoading(false);
       });
+
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
