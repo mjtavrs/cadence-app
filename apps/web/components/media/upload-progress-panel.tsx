@@ -17,6 +17,8 @@ function getStatusIcon(status: UploadProgress["status"]) {
   switch (status) {
     case "success":
       return <CheckCircle2 className="size-4 text-green-600 dark:text-green-400" />;
+    case "replaced":
+      return <CheckCircle2 className="size-4 text-sky-600 dark:text-sky-400" />;
     case "error":
       return <AlertCircle className="size-4 text-destructive" />;
     case "uploading":
@@ -38,6 +40,8 @@ function getStatusText(status: UploadProgress["status"]) {
       return "Enviando...";
     case "success":
       return "Concluído";
+    case "replaced":
+      return "Substituído";
     case "error":
       return "Erro";
     case "cancelled":
@@ -55,49 +59,43 @@ function truncateFileName(fileName: string, maxLength = 30) {
 }
 
 export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount = 0 }: UploadProgressPanelProps) {
-  if (uploads.length === 0) {
-    return null;
-  }
+  if (uploads.length === 0) return null;
 
   const activeUploads = uploads.filter((u) => u.status === "pending" || u.status === "uploading");
-  const completedCount = uploads.filter((u) => u.status === "success").length;
+  const completedCount = uploads.filter((u) => u.status === "success" || u.status === "replaced").length;
   const errorCount = uploads.filter((u) => u.status === "error").length;
   const totalCount = uploads.length;
 
-  const handleClose = () => {
-    onClose?.();
-  };
-
   return (
-      <div
-        className={cn(
-          "fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-background shadow-xl transition-all duration-300",
-          "animate-in slide-in-from-bottom-4 fade-in-0",
-        )}
-        style={{ bottom: selectedCount > 0 ? "100px" : "16px" }}
-      >
-        <div className="border-b p-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">
-              {activeUploads.length > 0
-                ? `Enviando ${activeUploads.length} de ${totalCount} arquivo(s)`
-                : errorCount > 0
-                  ? `${completedCount} de ${totalCount} concluído(s), ${errorCount} erro(s)`
-                  : `${completedCount} de ${totalCount} arquivo(s) enviado(s)`}
-            </h3>
-            {onClose && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0"
-                onClick={handleClose}
-                aria-label="Fechar painel"
-              >
-                <X className="size-4" />
-              </Button>
-            )}
-          </div>
+    <div
+      className={cn(
+        "fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-background shadow-xl transition-all duration-300",
+        "animate-in slide-in-from-bottom-4 fade-in-0",
+      )}
+      style={{ bottom: selectedCount > 0 ? "100px" : "16px" }}
+    >
+      <div className="border-b p-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">
+            {activeUploads.length > 0
+              ? `Enviando ${activeUploads.length} de ${totalCount} arquivo(s)`
+              : errorCount > 0
+                ? `${completedCount} de ${totalCount} concluído(s), ${errorCount} erro(s)`
+                : `${completedCount} de ${totalCount} arquivo(s) enviado(s)`}
+          </h3>
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              onClick={onClose}
+              aria-label="Fechar painel"
+            >
+              <X className="size-4" />
+            </Button>
+          )}
         </div>
+      </div>
 
       <div className="max-h-96 overflow-y-auto p-2">
         <div className="space-y-2">
@@ -113,6 +111,7 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
                   "rounded-md border p-2 transition-all duration-200",
                   upload.status === "error" && "border-destructive/50 bg-destructive/5",
                   upload.status === "success" && "border-green-500/50 bg-green-500/5",
+                  upload.status === "replaced" && "border-sky-500/50 bg-sky-500/5",
                   upload.status === "cancelled" && "opacity-60",
                   upload.status === "pending" && "border-muted bg-muted/30",
                 )}
@@ -122,10 +121,7 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p
-                        className="truncate text-sm font-medium"
-                        title={upload.fileName}
-                      >
+                      <p className="truncate text-sm font-medium" title={upload.fileName}>
                         {truncateFileName(upload.fileName)}
                       </p>
                       {canCancel && (
@@ -154,6 +150,7 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
                           "mt-1 text-xs",
                           upload.status === "error" && "text-destructive",
                           upload.status === "success" && "text-green-600 dark:text-green-400",
+                          upload.status === "replaced" && "text-sky-600 dark:text-sky-400",
                           upload.status === "cancelled" && "text-muted-foreground",
                         )}
                       >
@@ -170,3 +167,4 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
     </div>
   );
 }
+

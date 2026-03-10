@@ -7,10 +7,16 @@ import { toast } from "sonner";
 export type UploadProgress = {
   fileId: string;
   fileName: string;
-  status: "pending" | "uploading" | "success" | "error" | "cancelled";
+  status: "pending" | "uploading" | "success" | "replaced" | "error" | "cancelled";
   progress: number;
   error?: string;
   abortController?: AbortController;
+};
+
+export type UploadBatchResult = {
+  uploaded: number;
+  replaced: number;
+  failed: number;
 };
 
 export type MediaItem = {
@@ -39,6 +45,13 @@ type FolderListResponse = {
   items: MediaFolder[];
 };
 
+type ResolveFolderTreeResponse = {
+  items: Array<{
+    path: string;
+    folderId: string;
+  }>;
+};
+
 type PresignResponse = {
   mediaId: string;
   s3Key: string;
@@ -60,10 +73,17 @@ type PresignBatchResponse = {
 
 type CreateBatchResponse = {
   created: Array<{ mediaId: string }>;
+  replacedMediaIds?: string[];
   errors?: Array<{
     mediaId: string;
     message: string;
   }>;
+};
+
+type UploadOptions = {
+  folderId?: string | null;
+  dedupeMode?: "replace_by_name_ext";
+  getFolderId?: (file: File, index: number) => string | null;
 };
 
 function getErrorMessage(value: unknown) {
@@ -119,7 +139,7 @@ function uploadFileWithProgress(
 async function loadMedia() {
   const res = await fetch("/api/media", { cache: "no-store" });
   const payload = (await res.json().catch(() => null)) as unknown;
-  if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar mÃ­dias.");
+  if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao carregar mídias.");
   const data = payload as MediaListResponse;
   return data.items ?? [];
 }
@@ -212,7 +232,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
       const createPayload = (await createRes.json().catch(() => null)) as unknown;
       if (!createRes.ok) {
-        throw new Error(getErrorMessage(createPayload) ?? "Falha ao registrar mÃ­dia.");
+        throw new Error(getErrorMessage(createPayload) ?? "Falha ao registrar mídia.");
       }
     },
     onSuccess: async () => {
@@ -224,11 +244,11 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/media/${encodeURIComponent(id)}`, { method: "DELETE" });
       const payload = (await res.json().catch(() => null)) as unknown;
-      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar mÃ­dia.");
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao deletar mídia.");
     },
     onSuccess: async (_data, id) => {
       await refreshMediaQueries();
-      toast.success("MÃ­dia excluÃ­da.");
+      toast.success("Mídia excluída.");
       setDeletingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -236,7 +256,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       });
     },
     onError: () => {
-      // noop: estado Ã© limpo no onSettled
+      // noop: estado é limpo no onSettled
     },
     onSettled: (_data, _error, id) => {
       setDeletingIds((prev) => {
@@ -255,14 +275,14 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         body: JSON.stringify({ mediaIds: ids }),
       });
       const payload = (await res.json().catch(() => null)) as unknown;
-      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir mÃ­dias.");
+      if (!res.ok) throw new Error(getErrorMessage(payload) ?? "Falha ao excluir mídias.");
       const data = payload as { deleted?: string[] };
       return data.deleted ?? [];
     },
     onSuccess: async (deleted) => {
       await refreshMediaQueries();
       const n = deleted.length;
-      toast.success(n === 1 ? "MÃ­dia excluÃ­da." : `${n} mÃ­dias excluÃ­das.`);
+      toast.success(n === 1 ? "Mídia excluída." : `${n} mídias excluídas.`);
     },
   });
 
@@ -348,7 +368,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     },
     onSuccess: async () => {
       await Promise.all([refreshFolderQueries(), refreshMediaQueries()]);
-      toast.success("Pasta excluida.");
+      toast.success("Pasta excluída.");
     },
   });
 
@@ -356,7 +376,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     setError(null);
 
     if (!allowedTypes.has(file.type)) {
-      setError("Formato nÃ£o suportado. Use JPEG, PNG, WEBP ou HEIC.");
+      setError("Formato não suportado. Use JPEG, PNG, WEBP ou HEIC.");
       return;
     }
     if (file.size > maxBytes) {
@@ -378,7 +398,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     }
   }
 
-  async function onPickFiles(files: File[], options?: { folderId?: string | null }) {
+  async function onPickFiles(files: File[], options?: UploadOptions): Promise<UploadBatchResult | void> {
     setError(null);
     const progressMap = new Map<string, UploadProgress>();
 
@@ -397,13 +417,13 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       });
 
       if (!allowedTypes.has(file.type)) {
-        errors.push({ index: i, fileName: file.name, message: "Formato nÃ£o suportado." });
+        errors.push({ index: i, fileName: file.name, message: "Formato não suportado." });
         progressMap.set(fileId, {
           fileId,
           fileName: file.name,
           status: "error",
           progress: 0,
-          error: "Formato nÃ£o suportado.",
+          error: "Formato não suportado.",
         });
         continue;
       }
@@ -426,14 +446,14 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
     if (validFiles.length === 0) {
       const errorMessages = errors.map((e) => `${e.fileName}: ${e.message}`).join("\n");
-      setError(`Nenhum arquivo vÃ¡lido.\n${errorMessages}`);
+      setError(`Nenhum arquivo válido.\n${errorMessages}`);
       return;
     }
 
     const availableSlots = Math.max(0, MAX_ITEMS_PER_WORKSPACE - items.length);
     if (validFiles.length > availableSlots) {
       setError(
-        `Limite de ${MAX_ITEMS_PER_WORKSPACE} imagens atingido. VocÃª pode fazer upload de ${availableSlots} arquivo(s).`,
+        `Limite de ${MAX_ITEMS_PER_WORKSPACE} imagens atingido. Você pode fazer upload de ${availableSlots} arquivo(s).`,
       );
       for (const { fileId } of validFiles) {
         progressMap.set(fileId, {
@@ -450,7 +470,10 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
     try {
       let hadSuccessfulUpload = false;
-      const folderId = options?.folderId ?? null;
+      let uploadedCount = 0;
+      let replacedCount = 0;
+      const defaultFolderId = options?.folderId ?? null;
+      const resolveFolderId = options?.getFolderId ?? (() => defaultFolderId);
 
       for (let start = 0; start < validFiles.length; start += MAX_BATCH_UPLOAD_SIZE) {
         const chunk = validFiles.slice(start, start + MAX_BATCH_UPLOAD_SIZE);
@@ -556,7 +579,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
               contentType: validFile.file.type,
               sizeBytes: validFile.file.size,
               fileName: validFile.file.name,
-              folderId,
+              folderId: resolveFolderId(validFile.file, validFile.index),
             };
           } catch (e) {
             abortControllersRef.current.delete(fileId);
@@ -593,7 +616,8 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            folderId,
+            folderId: defaultFolderId,
+            dedupeMode: options?.dedupeMode,
             items: successfulUploads.map(({ fileId: _ignored, ...item }) => item),
           }),
         });
@@ -616,6 +640,23 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         }
 
         const createData = createPayload as CreateBatchResponse;
+        uploadedCount += createData.created?.length ?? 0;
+        const replacedSet = new Set(createData.replacedMediaIds ?? []);
+        replacedCount += replacedSet.size;
+        if (replacedSet.size > 0) {
+          const uploadByMediaId = new Map(successfulUploads.map((item) => [item.mediaId, item] as const));
+          for (const mediaId of replacedSet) {
+            const replaced = uploadByMediaId.get(mediaId);
+            if (!replaced) continue;
+            progressMap.set(replaced.fileId, {
+              fileId: replaced.fileId,
+              fileName: replaced.fileName,
+              status: "replaced",
+              progress: 100,
+            });
+          }
+          setUploadProgress(new Map(progressMap));
+        }
         if (createData.errors && createData.errors.length > 0) {
           const uploadByMediaId = new Map(successfulUploads.map((item) => [item.mediaId, item] as const));
           for (const err of createData.errors) {
@@ -642,6 +683,8 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
 
       await refreshMediaQueries();
       await queryClient.refetchQueries({ queryKey: ["media"] });
+      const failedCount = Array.from(progressMap.values()).filter((item) => item.status === "error").length;
+      return { uploaded: uploadedCount, replaced: replacedCount, failed: failedCount };
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao enviar arquivos.");
       for (const { fileId } of validFiles) {
@@ -656,6 +699,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         }
       }
       setUploadProgress(new Map(progressMap));
+      return;
     }
   }
 
@@ -674,7 +718,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
         next.delete(id);
         return next;
       });
-      setError(e instanceof Error ? e.message : "Falha ao deletar mÃ­dia.");
+      setError(e instanceof Error ? e.message : "Falha ao deletar mídia.");
     }
   }
 
@@ -684,7 +728,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     try {
       await deleteBatchMutation.mutateAsync(ids);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao excluir mÃ­dias.");
+      setError(e instanceof Error ? e.message : "Falha ao excluir mídias.");
     }
   }
 
@@ -705,7 +749,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       await renameMutation.mutateAsync({ id, fileName });
     } catch (e) {
       if (e instanceof Error && e.message === "UNAVAILABLE") {
-        toast.info("Renomear estarÃ¡ disponÃ­vel em breve.");
+        toast.info("Renomear estará disponível em breve.");
         return;
       }
       setError(e instanceof Error ? e.message : "Falha ao renomear.");
@@ -725,6 +769,32 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
       setError(message);
       throw e;
     }
+  }
+
+  async function resolveFolderTree(folders: string[], parentFolderId?: string | null) {
+    setError(null);
+    const res = await fetch("/api/media/folders/resolve-tree", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        folders,
+        parentFolderId: parentFolderId ?? null,
+      }),
+    });
+    const payload = (await res.json().catch(() => null)) as unknown;
+    if (!res.ok) {
+      const message = getErrorMessage(payload) ?? "Falha ao resolver árvore de pastas.";
+      setError(message);
+      throw new Error(message);
+    }
+    const data = payload as ResolveFolderTreeResponse;
+    const mapping = new Map<string, string>();
+    for (const item of data.items ?? []) {
+      if (typeof item.path === "string" && typeof item.folderId === "string") {
+        mapping.set(item.path, item.folderId);
+      }
+    }
+    return mapping;
   }
 
   async function renameFolder(id: string, name: string) {
@@ -811,6 +881,7 @@ export function useMediaLibrary(opts?: { initialItems?: MediaItem[] }) {
     isDeletingFolder: deleteFolderMutation.isPending,
     onPickFile,
     onPickFiles,
+    resolveFolderTree,
     cancelUpload,
     deleteItem,
     deleteBatch,

@@ -16,6 +16,7 @@ type MediaItemInput = {
 
 type Body = {
   folderId?: string | null;
+  dedupeMode?: "replace_by_name_ext";
   items?: MediaItemInput[];
 };
 
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
     body: JSON.stringify({
       workspaceId,
       folderId: typeof body.folderId === "string" ? body.folderId : null,
+      dedupeMode: body.dedupeMode === "replace_by_name_ext" ? "replace_by_name_ext" : undefined,
       items: body.items.map((item) => ({
         ...item,
         folderId: typeof item.folderId === "string" ? item.folderId : null,

@@ -14,8 +14,8 @@ async function getAuth() {
   const store = await cookies();
   const accessToken = store.get(ACCESS_COOKIE)?.value;
   const workspaceId = store.get(WORKSPACE_COOKIE)?.value;
-  if (!accessToken) return NextResponse.json({ message: "Nao autenticado." }, { status: 401 });
-  if (!workspaceId) return NextResponse.json({ message: "Workspace nao selecionado." }, { status: 400 });
+  if (!accessToken) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
   return { accessToken, workspaceId } as const;
 }
 
@@ -25,7 +25,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const body = (await req.json().catch(() => null)) as RenameFolderBody | null;
   if (!body?.name || !body.name.trim()) {
-    return NextResponse.json({ message: "name e obrigatorio." }, { status: 400 });
+    return NextResponse.json({ message: "name é obrigatório." }, { status: 400 });
   }
 
   const { id } = await ctx.params;

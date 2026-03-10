@@ -72,9 +72,38 @@ export function SidebarNav(props: { collapsed: boolean; onNavigate?: () => void 
   }, [mediaFolderId, folderById]);
 
   const mediaItem = navItems.find((item) => item.href === "/app/media");
-  const baseItems = navItems.filter((item) => item.href !== "/app/media");
+  const mediaIndex = navItems.findIndex((item) => item.href === "/app/media");
+  const itemsBeforeMedia = (mediaIndex >= 0 ? navItems.slice(0, mediaIndex) : navItems).filter(
+    (item) => item.href !== "/app/media",
+  );
+  const itemsAfterMedia = mediaIndex >= 0 ? navItems.slice(mediaIndex + 1) : [];
   const isMediaRoute = pathname === "/app/media" || pathname.startsWith("/app/media/");
   const mediaRootActive = isMediaRoute && !mediaFolderId;
+
+  function renderNavItem(item: (typeof navItems)[number]) {
+    const active =
+      item.href === "/app"
+        ? pathname === "/app" || pathname === "/app/"
+        : pathname === item.href || pathname.startsWith(item.href + "/");
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => props.onNavigate?.()}
+        className={cn(
+          "flex items-center rounded-lg border-2 text-sm transition-colors",
+          "border-transparent text-muted-foreground",
+          "hover:bg-zinc-900/5 hover:text-foreground dark:hover:bg-white/10",
+          active && "border-border bg-zinc-900/5 text-foreground font-medium dark:bg-white/10",
+          props.collapsed ? "h-9 w-9 justify-center box-border" : "gap-3 px-3 py-2",
+        )}
+      >
+        <Icon className={cn("shrink-0", props.collapsed ? "h-5 w-5" : "h-4 w-4")} />
+        {!props.collapsed && <span className="truncate">{item.label}</span>}
+      </Link>
+    );
+  }
 
   function toggleFolderExpand(id: string) {
     setExpandedIds((prev) => {
@@ -142,30 +171,7 @@ export function SidebarNav(props: { collapsed: boolean; onNavigate?: () => void 
 
   return (
     <nav className="flex flex-col gap-1">
-      {baseItems.map((item) => {
-        const active =
-          item.href === "/app"
-            ? pathname === "/app" || pathname === "/app/"
-            : pathname === item.href || pathname.startsWith(item.href + "/");
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => props.onNavigate?.()}
-            className={cn(
-              "flex items-center rounded-lg border-2 text-sm transition-colors",
-              "border-transparent text-muted-foreground",
-              "hover:bg-zinc-900/5 hover:text-foreground dark:hover:bg-white/10",
-              active && "border-border bg-zinc-900/5 text-foreground font-medium dark:bg-white/10",
-              props.collapsed ? "h-9 w-9 justify-center box-border" : "gap-3 px-3 py-2",
-            )}
-          >
-            <Icon className={cn("shrink-0", props.collapsed ? "h-5 w-5" : "h-4 w-4")} />
-            {!props.collapsed && <span className="truncate">{item.label}</span>}
-          </Link>
-        );
-      })}
+      {itemsBeforeMedia.map((item) => renderNavItem(item))}
 
       {mediaItem ? (
         props.collapsed ? (
@@ -230,6 +236,8 @@ export function SidebarNav(props: { collapsed: boolean; onNavigate?: () => void 
           </div>
         )
       ) : null}
+
+      {itemsAfterMedia.map((item) => renderNavItem(item))}
     </nav>
   );
 }

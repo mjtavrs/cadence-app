@@ -1,10 +1,11 @@
-import type { APIGatewayProxyHandler } from "aws-lambda";
+﻿import type { APIGatewayProxyHandler } from "aws-lambda";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { canManageApproval, canWrite } from "../../auth/rbac";
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { normalizeTags, normalizeTitle, validateTags, validateTitle } from "../../posts/metadata";
+import { parseMvpPostChannelsInput } from "../../posts/channels";
 import { isValidSingleMedia, normalizeCaption } from "../../posts/schedule";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 
@@ -17,12 +18,14 @@ type Body = {
   aspectRatio?: string;
   cropX?: number;
   cropY?: number;
+  channels?: unknown;
 };
 
 type Post = {
   PK: string;
   SK: string;
   status: string;
+  channels?: unknown;
 };
 
 const VALID_ASPECT_RATIOS = new Set(["original", "1:1", "4:5", "16:9"]);
@@ -96,22 +99,29 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const post = existing.Item as Post | undefined;
     if (!post) return badRequest("Post não encontrado.");
 
+    const channelsSource = body.channels === undefined ? post.channels : body.channels;
+    const channelsResult = parseMvpPostChannelsInput(channelsSource);
+    if (!channelsResult.ok) return badRequest(channelsResult.message);
+    const channels = channelsResult.channels;
+
     const now = new Date().toISOString();
     const shouldReReview =
       !canManageApproval(membership.role) &&
       (post.status === "APPROVED" || post.status === "SCHEDULED");
 
-    const setParts: string[] = ["#caption = :caption", "#mediaIds = :mediaIds", "#updatedAt = :now"];
+    const setParts: string[] = ["#caption = :caption", "#mediaIds = :mediaIds", "#channels = :channels", "#updatedAt = :now"];
     const removeParts: string[] = [];
 
     const names: Record<string, string> = {
       "#caption": "caption",
       "#mediaIds": "mediaIds",
+      "#channels": "channels",
       "#updatedAt": "updatedAt",
     };
     const values: Record<string, unknown> = {
       ":caption": caption,
       ":mediaIds": mediaIds,
+      ":channels": channels,
       ":now": now,
     };
 

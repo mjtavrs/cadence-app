@@ -5,6 +5,21 @@ import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 import { computeMonthBucketRecife } from "../../posts/schedule";
+import { normalizePostChannels } from "../../posts/channels";
+
+function normalizePublishedAt(item: Record<string, unknown>) {
+  if (typeof item.publishedAt === "string" && item.publishedAt) return item.publishedAt;
+  if (item.status === "PUBLISHED" && typeof item.updatedAt === "string" && item.updatedAt) return item.updatedAt;
+  return null;
+}
+
+function normalizeListItem(item: Record<string, unknown>) {
+  return {
+    ...item,
+    channels: normalizePostChannels(item.channels),
+    publishedAt: normalizePublishedAt(item),
+  };
+}
 
 function prevMonth(month: string) {
   const [y, m] = month.split("-");
@@ -69,7 +84,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         }),
       );
 
-      return json(200, { items: res.Items ?? [] });
+      return json(200, {
+        items: (res.Items ?? []).map((item) => normalizeListItem(item as Record<string, unknown>)),
+      });
     }
 
     if (month) {
@@ -109,7 +126,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           return aa.localeCompare(bb);
         });
 
-      return json(200, { items: filtered });
+      return json(200, {
+        items: filtered.map((item) => normalizeListItem(item)),
+      });
     }
 
     const res = await ddb.send(
@@ -132,7 +151,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }),
     );
 
-    return json(200, { items: res.Items ?? [] });
+    return json(200, {
+      items: (res.Items ?? []).map((item) => normalizeListItem(item as Record<string, unknown>)),
+    });
   } catch (err: any) {
     const name = err?.name as string | undefined;
     if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");

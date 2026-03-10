@@ -252,15 +252,22 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const response: {
       created: Array<{ mediaId: string }>;
+      replacedMediaIds?: string[];
       errors?: Array<{ mediaId: string; message: string }>;
     } = { created };
 
     if (created.length > 0 && replacementsByNewMediaId.size > 0) {
       const createdIds = new Set(created.map((item) => item.mediaId));
+      const oldToNewMediaId = new Map<string, string>();
+      for (const [newMediaId, oldRow] of replacementsByNewMediaId.entries()) {
+        oldToNewMediaId.set(oldRow.mediaId, newMediaId);
+      }
+
       const rowsToDelete = Array.from(replacementsByNewMediaId.entries())
         .filter(([newMediaId]) => createdIds.has(newMediaId))
         .map(([, row]) => row);
       const uniqueRowsToDelete = Array.from(new Map(rowsToDelete.map((row) => [row.mediaId, row])).values());
+      const replacedNewMediaIds = new Set<string>();
 
       for (const rowsChunk of chunk(uniqueRowsToDelete, MAX_ITEMS_PER_BATCH)) {
         const deleteRequests = rowsChunk.map((row) => ({
@@ -296,6 +303,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             });
             continue;
           }
+          const newMediaId = oldToNewMediaId.get(row.mediaId);
+          if (newMediaId) replacedNewMediaIds.add(newMediaId);
           try {
             await deleteObject({ key: row.s3Key });
           } catch {
@@ -305,6 +314,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             });
           }
         }
+      }
+
+      if (replacedNewMediaIds.size > 0) {
+        response.replacedMediaIds = Array.from(replacedNewMediaIds);
       }
     }
 

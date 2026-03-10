@@ -1,4 +1,5 @@
 import type { Role } from "../auth/rbac";
+import type { PostChannel } from "./channels";
 
 export type PostStatus =
   | "DRAFT"
@@ -22,12 +23,14 @@ export type PostItem = {
   status: PostStatus;
   caption: string;
   mediaIds: string[];
+  channels: PostChannel[];
 
   createdAt: string;
   createdByUserId: string;
   createdByRole: Role;
 
   updatedAt: string;
+  publishedAt?: string;
 
   flaggedAt?: string;
   flaggedByUserId?: string;

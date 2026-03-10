@@ -20,6 +20,7 @@ export function AppShellClient(props: {
   children: React.ReactNode;
   workspaceName: string | null;
   workspaceRole: string | null;
+  workspaceLogoUrl: string | null;
   user: AppShellUser;
 }) {
   const sidebar = useSidebarCollapsed();
@@ -60,6 +61,8 @@ export function AppShellClient(props: {
         <div className="min-w-0 flex-1">
           <Topbar
             workspaceName={props.workspaceName}
+            workspaceLogoUrl={props.workspaceLogoUrl}
+            canManageWorkspace={props.workspaceRole === "OWNER" || props.workspaceRole === "ADMIN"}
             onToggleDesktopSidebar={sidebar.toggle}
             onOpenMobileSidebar={() => setMobileOpen(true)}
           />
@@ -70,4 +73,3 @@ export function AppShellClient(props: {
     </WorkspaceRoleProvider>
   );
 }
-

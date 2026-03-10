@@ -29,6 +29,7 @@ type UpdateBody = {
   aspectRatio?: string;
   cropX?: number;
   cropY?: number;
+  channels?: Array<{ platform: string; placement: string }>;
 };
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -57,6 +58,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
       aspectRatio: body.aspectRatio,
       cropX: body.cropX,
       cropY: body.cropY,
+      channels: body.channels,
     }),
   });
 

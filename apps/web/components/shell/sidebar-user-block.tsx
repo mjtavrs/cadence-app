@@ -109,7 +109,7 @@ export function SidebarUserBlock(props: {
               {storageQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">Carregando resumo...</p>
               ) : storageQuery.isError ? (
-                <p className="text-sm text-muted-foreground">Resumo indisponivel.</p>
+                <p className="text-sm text-muted-foreground">Resumo indisponível.</p>
               ) : storageSummary ? (
                 <p className="text-sm font-medium">
                   {formatFileSize(storageSummary.bytesUsed)} de {formatFileSize(storageSummary.bytesLimit)}

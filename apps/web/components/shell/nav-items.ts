@@ -1,4 +1,4 @@
-import { CalendarDaysIcon, LayoutDashboardIcon, NotebookTextIcon } from "lucide-react";
+﻿import { CalendarDaysIcon, LayoutDashboardIcon, NotebookTextIcon } from "lucide-react";
 import { GrGallery } from "react-icons/gr";
 
 export type NavItem = {
@@ -10,7 +10,6 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboardIcon },
   { href: "/app/posts", label: "Posts", icon: NotebookTextIcon },
-  { href: "/app/calendar", label: "Calendario", icon: CalendarDaysIcon },
-  { href: "/app/media", label: "Biblioteca de midia", icon: GrGallery },
+  { href: "/app/calendar", label: "Calendário", icon: CalendarDaysIcon },
+  { href: "/app/media", label: "Biblioteca de mídia", icon: GrGallery },
 ];
-

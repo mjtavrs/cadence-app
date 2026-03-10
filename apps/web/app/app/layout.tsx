@@ -1,4 +1,4 @@
-import { AppShellClient } from "@/components/shell/app-shell-client";
+﻿import { AppShellClient } from "@/components/shell/app-shell-client";
 import { loadActiveWorkspaceOnServer, loadUserOnServer } from "@/lib/server-session";
 
 export default async function AppLayout(props: { children: React.ReactNode }) {
@@ -8,6 +8,7 @@ export default async function AppLayout(props: { children: React.ReactNode }) {
     <AppShellClient
       workspaceName={activeWorkspace.name}
       workspaceRole={activeWorkspace.role}
+      workspaceLogoUrl={activeWorkspace.logoUrl}
       user={user}
     >
       {props.children}

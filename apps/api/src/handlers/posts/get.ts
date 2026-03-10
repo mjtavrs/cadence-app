@@ -4,6 +4,13 @@ import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token"
 import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
+import { normalizePostChannels } from "../../posts/channels";
+
+function normalizePublishedAt(item: Record<string, unknown>) {
+  if (typeof item.publishedAt === "string" && item.publishedAt) return item.publishedAt;
+  if (item.status === "PUBLISHED" && typeof item.updatedAt === "string" && item.updatedAt) return item.updatedAt;
+  return null;
+}
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   const token = getBearerToken(event.headers?.authorization ?? event.headers?.Authorization);
@@ -34,7 +41,12 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     if (!res.Item) return badRequest("Post não encontrado.");
 
-    return json(200, res.Item);
+    const item = res.Item as Record<string, unknown>;
+    return json(200, {
+      ...item,
+      channels: normalizePostChannels(item.channels),
+      publishedAt: normalizePublishedAt(item),
+    });
   } catch (err: any) {
     const name = err?.name as string | undefined;
     if (name === "NotAuthorizedException") return unauthorized("Sessão expirada. Faça login novamente.");

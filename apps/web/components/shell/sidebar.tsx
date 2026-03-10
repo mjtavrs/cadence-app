@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 
 import { cn } from "@/lib/utils";
@@ -31,7 +32,11 @@ export function Sidebar(props: {
           props.collapsed ? "items-center p-3" : "p-4",
         )}
       >
-        <div className={cn("relative w-full", props.collapsed ? "h-10" : "")}>
+        <Link
+          href="/app"
+          className={cn("relative block w-full", props.collapsed ? "h-10" : "")}
+          aria-label="Ir para o início"
+        >
           <div
             className={cn(
               "transition-opacity duration-200 ease-in-out",
@@ -65,7 +70,7 @@ export function Sidebar(props: {
               priority
             />
           </div>
-        </div>
+        </Link>
 
         <SidebarNav collapsed={props.collapsed} />
       </div>

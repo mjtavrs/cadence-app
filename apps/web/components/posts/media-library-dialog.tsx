@@ -149,7 +149,7 @@ export function MediaLibraryDialog(props: {
       <DialogContent className="sm:max-w-4xl" showCloseButton>
         <DialogHeader className="gap-3">
           <div className="flex items-center justify-between gap-3 pr-8">
-            <DialogTitle>Biblioteca de midia</DialogTitle>
+            <DialogTitle>Biblioteca de mídia</DialogTitle>
             <ToggleGroup
               type="single"
               value={viewMode}
@@ -162,7 +162,7 @@ export function MediaLibraryDialog(props: {
               variant="outline"
               size="sm"
               spacing={0}
-              aria-label="Alternar visualizacao da biblioteca"
+              aria-label="Alternar visualização da biblioteca"
             >
               <ToggleGroupItem value="list" aria-label="Lista" title="Lista">
                 <ViewModeIcon active={viewMode === "list"} icon={<IoList className="size-[18px]" />} />
@@ -183,7 +183,7 @@ export function MediaLibraryDialog(props: {
               <p className="text-muted-foreground py-4 text-sm">Carregando...</p>
             ) : props.media.length === 0 ? (
               <p className="text-muted-foreground py-4 text-sm">
-                Nenhuma midia disponivel. Envie arquivos em Midia.
+                Nenhuma mídia disponível. Envie arquivos em Mídia.
               </p>
             ) : (
               <div className="grid grid-cols-4 gap-3 py-2">
@@ -198,7 +198,7 @@ export function MediaLibraryDialog(props: {
                     onClick={() => handleSelect(item.id)}
                     onDoubleClick={() => handleConfirm(item.id)}
                     >
-                      <img src={item.url} alt={item.fileName ?? "midia"} className="h-full w-full object-cover" />
+                      <img src={item.url} alt={item.fileName ?? "mídia"} className="h-full w-full object-cover" />
                     </button>
                 ))}
               </div>
@@ -210,7 +210,7 @@ export function MediaLibraryDialog(props: {
               <p className="text-muted-foreground px-4 py-4 text-sm">Carregando...</p>
             ) : props.media.length === 0 ? (
               <p className="text-muted-foreground px-4 py-4 text-sm">
-                Nenhuma midia disponivel. Envie arquivos em Midia.
+                Nenhuma mídia disponível. Envie arquivos em Mídia.
               </p>
             ) : (
               <div className="p-2">
@@ -235,14 +235,14 @@ export function MediaLibraryDialog(props: {
                         onMouseEnter={(event) => scheduleHoverPreview(item, event.currentTarget)}
                         onMouseLeave={hideHoverPreview}
                       >
-                        <img src={item.url} alt={item.fileName ?? "midia"} className="h-full w-full object-cover" />
+                        <img src={item.url} alt={item.fileName ?? "mídia"} className="h-full w-full object-cover" />
                       </div>
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">
                           {item.fileName ?? "Imagem sem nome"}
                         </div>
                         <div className="text-muted-foreground text-xs">
-                          {createdAt ? `Adicionada em ${createdAt}` : "Data indisponivel"}
+                          {createdAt ? `Adicionada em ${createdAt}` : "Data indisponível"}
                         </div>
                       </div>
                     </button>

@@ -1,4 +1,4 @@
-import type { APIGatewayProxyHandler } from "aws-lambda";
+﻿import type { APIGatewayProxyHandler } from "aws-lambda";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { getBearerToken, getUserFromAccessToken } from "../../auth/access-token";
 import { canManageApproval, canWrite } from "../../auth/rbac";
@@ -6,6 +6,7 @@ import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { badRequest, json, serverError, unauthorized } from "../../http/responses";
 import { newPostId, newPostShortCode } from "../../posts/ids";
+import { parseMvpPostChannelsInput } from "../../posts/channels";
 import {
   computeMonthBucketRecife,
   computeWeekBucketRecife,
@@ -26,6 +27,7 @@ type PostRecord = {
   aspectRatio?: "original" | "1:1" | "4:5" | "16:9";
   cropX?: number;
   cropY?: number;
+  channels?: unknown;
 };
 
 const VALID_ASPECTS = new Set(["original", "1:1", "4:5", "16:9"]);
@@ -74,6 +76,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const source = sourceRes.Item as PostRecord | undefined;
     if (!source) return badRequest("Post não encontrado.");
 
+    const channelsResult = parseMvpPostChannelsInput(source.channels);
+    if (!channelsResult.ok) return badRequest(channelsResult.message);
+    const channels = channelsResult.channels;
+
     const sourceMediaIds = Array.isArray(source.mediaIds) ? source.mediaIds : [];
     if (sourceMediaIds.length !== 1) {
       return badRequest("No MVP, o post de origem precisa conter exatamente 1 mídia.");
@@ -117,6 +123,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                     status,
                     caption: source.caption ?? "",
                     mediaIds: sourceMediaIds,
+                    channels,
                     aspectRatio,
                     cropX,
                     cropY,

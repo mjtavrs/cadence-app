@@ -130,6 +130,10 @@ export class CadenceStack extends Stack {
         COGNITO_USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
         APP_TABLE_NAME: appTable.tableName,
         MEDIA_BUCKET_NAME: mediaBucket.bucketName,
+        INSTAGRAM_APP_ID: process.env.INSTAGRAM_APP_ID ?? "",
+        INSTAGRAM_REDIRECT_URI: process.env.INSTAGRAM_REDIRECT_URI ?? "",
+        INSTAGRAM_OAUTH_AUTHORIZE_URL: process.env.INSTAGRAM_OAUTH_AUTHORIZE_URL ?? "",
+        INSTAGRAM_OAUTH_SCOPES: process.env.INSTAGRAM_OAUTH_SCOPES ?? "",
       },
     } as const;
 
@@ -175,6 +179,66 @@ export class CadenceStack extends Stack {
 
     const setActiveWorkspaceFn = new NodejsFunction(this, "SetActiveWorkspaceFn", {
       entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/set-active.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const getWorkspaceSettingsFn = new NodejsFunction(this, "GetWorkspaceSettingsFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/settings-get.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const updateWorkspaceSettingsGeneralFn = new NodejsFunction(this, "UpdateWorkspaceSettingsGeneralFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/settings-update-general.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const updateWorkspaceSettingsPublishingFn = new NodejsFunction(this, "UpdateWorkspaceSettingsPublishingFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/settings-update-publishing.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const updateWorkspaceSettingsNotificationsFn = new NodejsFunction(this, "UpdateWorkspaceSettingsNotificationsFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/settings-update-notifications.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const presignWorkspaceSettingsLogoFn = new NodejsFunction(this, "PresignWorkspaceSettingsLogoFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/settings-logo-presign.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const getWorkspaceConnectionsFn = new NodejsFunction(this, "GetWorkspaceConnectionsFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/connections-get.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const getInstagramAuthUrlFn = new NodejsFunction(this, "GetInstagramAuthUrlFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/connections-instagram-auth-url.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const instagramCallbackFn = new NodejsFunction(this, "InstagramCallbackFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/connections-instagram-callback.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const disconnectInstagramFn = new NodejsFunction(this, "DisconnectInstagramFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/connections-instagram-disconnect.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const listWorkspaceMembersFn = new NodejsFunction(this, "ListWorkspaceMembersFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/members-list.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const updateWorkspaceMemberRoleFn = new NodejsFunction(this, "UpdateWorkspaceMemberRoleFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/members-update-role.ts"),
+      ...apiHandlerDefaults,
+    });
+
+    const deleteWorkspaceMemberFn = new NodejsFunction(this, "DeleteWorkspaceMemberFn", {
+      entry: path.resolve(__dirname, "../../apps/api/src/handlers/workspaces/members-delete.ts"),
       ...apiHandlerDefaults,
     });
 
@@ -336,6 +400,18 @@ export class CadenceStack extends Stack {
       updateMeFn,
       listWorkspacesFn,
       setActiveWorkspaceFn,
+      getWorkspaceSettingsFn,
+      updateWorkspaceSettingsGeneralFn,
+      updateWorkspaceSettingsPublishingFn,
+      updateWorkspaceSettingsNotificationsFn,
+      presignWorkspaceSettingsLogoFn,
+      getWorkspaceConnectionsFn,
+      getInstagramAuthUrlFn,
+      instagramCallbackFn,
+      disconnectInstagramFn,
+      listWorkspaceMembersFn,
+      updateWorkspaceMemberRoleFn,
+      deleteWorkspaceMemberFn,
       presignMediaFn,
       presignMediaBatchFn,
       createMediaFn,
@@ -380,6 +456,18 @@ export class CadenceStack extends Stack {
     appTable.grantReadWriteData(updateMeFn);
     appTable.grantReadWriteData(listWorkspacesFn);
     appTable.grantReadWriteData(setActiveWorkspaceFn);
+    appTable.grantReadWriteData(getWorkspaceSettingsFn);
+    appTable.grantReadWriteData(updateWorkspaceSettingsGeneralFn);
+    appTable.grantReadWriteData(updateWorkspaceSettingsPublishingFn);
+    appTable.grantReadWriteData(updateWorkspaceSettingsNotificationsFn);
+    appTable.grantReadWriteData(presignWorkspaceSettingsLogoFn);
+    appTable.grantReadWriteData(getWorkspaceConnectionsFn);
+    appTable.grantReadWriteData(getInstagramAuthUrlFn);
+    appTable.grantReadWriteData(instagramCallbackFn);
+    appTable.grantReadWriteData(disconnectInstagramFn);
+    appTable.grantReadWriteData(listWorkspaceMembersFn);
+    appTable.grantReadWriteData(updateWorkspaceMemberRoleFn);
+    appTable.grantReadWriteData(deleteWorkspaceMemberFn);
     appTable.grantReadWriteData(presignMediaFn);
     appTable.grantReadWriteData(presignMediaBatchFn);
     appTable.grantReadWriteData(createMediaFn);
@@ -413,6 +501,9 @@ export class CadenceStack extends Stack {
 
     mediaBucket.grantPut(presignMediaFn);
     mediaBucket.grantPut(presignMediaBatchFn);
+    mediaBucket.grantPut(presignWorkspaceSettingsLogoFn);
+    mediaBucket.grantRead(getWorkspaceSettingsFn);
+    mediaBucket.grantRead(updateWorkspaceSettingsGeneralFn);
     mediaBucket.grantRead(listMediaFn);
     mediaBucket.grantDelete(deleteMediaFn);
     mediaBucket.grantDelete(deleteMediaBatchFn);
@@ -447,6 +538,38 @@ export class CadenceStack extends Stack {
     const workspaces = api.root.addResource("workspaces");
     workspaces.addMethod("GET", new apigateway.LambdaIntegration(listWorkspacesFn));
     workspaces.addResource("active").addMethod("POST", new apigateway.LambdaIntegration(setActiveWorkspaceFn));
+    const workspaceSettings = workspaces.addResource("settings");
+    workspaceSettings.addMethod("GET", new apigateway.LambdaIntegration(getWorkspaceSettingsFn));
+    workspaceSettings
+      .addResource("general")
+      .addMethod("PATCH", new apigateway.LambdaIntegration(updateWorkspaceSettingsGeneralFn));
+    workspaceSettings
+      .addResource("publishing")
+      .addMethod("PATCH", new apigateway.LambdaIntegration(updateWorkspaceSettingsPublishingFn));
+    workspaceSettings
+      .addResource("notifications")
+      .addMethod("PATCH", new apigateway.LambdaIntegration(updateWorkspaceSettingsNotificationsFn));
+    workspaceSettings
+      .addResource("logo")
+      .addResource("presign")
+      .addMethod("POST", new apigateway.LambdaIntegration(presignWorkspaceSettingsLogoFn));
+
+    const workspaceConnections = workspaces.addResource("connections");
+    workspaceConnections.addMethod("GET", new apigateway.LambdaIntegration(getWorkspaceConnectionsFn));
+    const workspaceInstagramConnections = workspaceConnections.addResource("instagram");
+    workspaceInstagramConnections
+      .addResource("auth-url")
+      .addMethod("POST", new apigateway.LambdaIntegration(getInstagramAuthUrlFn));
+    workspaceInstagramConnections
+      .addResource("callback")
+      .addMethod("POST", new apigateway.LambdaIntegration(instagramCallbackFn));
+    workspaceInstagramConnections.addMethod("DELETE", new apigateway.LambdaIntegration(disconnectInstagramFn));
+
+    const workspaceMembers = workspaces.addResource("members");
+    workspaceMembers.addMethod("GET", new apigateway.LambdaIntegration(listWorkspaceMembersFn));
+    const workspaceMemberById = workspaceMembers.addResource("{userId}");
+    workspaceMemberById.addMethod("PATCH", new apigateway.LambdaIntegration(updateWorkspaceMemberRoleFn));
+    workspaceMemberById.addMethod("DELETE", new apigateway.LambdaIntegration(deleteWorkspaceMemberFn));
 
     const media = api.root.addResource("media");
     const mediaPresign = media.addResource("presign");

@@ -6,6 +6,7 @@ import { assertWorkspaceMembership } from "../../auth/workspace";
 import { getDocClient, getTableName } from "../../db/dynamo";
 import { newPostId, newPostShortCode } from "../../posts/ids";
 import { normalizeTags, normalizeTitle, validateTags, validateTitle } from "../../posts/metadata";
+import { parseMvpPostChannelsInput } from "../../posts/channels";
 import {
   computeMonthBucketRecife,
   computeWeekBucketRecife,
@@ -28,6 +29,7 @@ type Body = {
   cropY?: number;
   saveAsDraft?: boolean;
   directSchedule?: boolean;
+  channels?: unknown;
 };
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -50,6 +52,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const rawAspectRatio = body.aspectRatio?.trim();
   const saveAsDraft = body.saveAsDraft === true;
   const directSchedule = body.directSchedule === true;
+  const channelsResult = parseMvpPostChannelsInput(body.channels);
+  if (!channelsResult.ok) return badRequest(channelsResult.message);
+  const channels = channelsResult.channels;
 
   const validAspectRatios = new Set(["original", "1:1", "4:5", "16:9"]);
   const aspectRatio = rawAspectRatio && validAspectRatios.has(rawAspectRatio) ? rawAspectRatio : "1:1";
@@ -130,6 +135,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                     status: postStatus,
                     caption,
                     mediaIds,
+                    channels,
                     aspectRatio,
                     cropX,
                     cropY,

@@ -16,8 +16,8 @@ export async function GET() {
   const accessToken = store.get(ACCESS_COOKIE)?.value;
   const workspaceId = store.get(WORKSPACE_COOKIE)?.value;
 
-  if (!accessToken) return NextResponse.json({ message: "Nao autenticado." }, { status: 401 });
-  if (!workspaceId) return NextResponse.json({ message: "Workspace nao selecionado." }, { status: 400 });
+  if (!accessToken) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
 
   const url = new URL("media/folders", env.apiBaseUrl);
   url.searchParams.set("workspaceId", workspaceId);
@@ -35,8 +35,8 @@ export async function POST(req: Request) {
   const accessToken = store.get(ACCESS_COOKIE)?.value;
   const workspaceId = store.get(WORKSPACE_COOKIE)?.value;
 
-  if (!accessToken) return NextResponse.json({ message: "Nao autenticado." }, { status: 401 });
-  if (!workspaceId) return NextResponse.json({ message: "Workspace nao selecionado." }, { status: 400 });
+  if (!accessToken) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  if (!workspaceId) return NextResponse.json({ message: "Workspace não selecionado." }, { status: 400 });
 
   const body = (await req.json().catch(() => null)) as CreateFolderBody | null;
 

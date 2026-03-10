@@ -12,6 +12,7 @@ import { BiCommentError, BiSolidCommentError } from "react-icons/bi";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -70,6 +71,7 @@ function statusRailClass(status: PostStatus) {
 export function PostCard(props: {
   item: PostListItem;
   isBusy: boolean;
+  isDeleting?: boolean;
   isHighlighted?: boolean;
   onSubmit?(): void;
   onApprove?(): void;
@@ -104,6 +106,7 @@ export function PostCard(props: {
   const isFlagged = !!p.flaggedAt;
   const canFlag = !!props.onFlag;
   const canUnflag = !!props.onUnflag;
+  const isItemBusy = props.isBusy || !!props.isDeleting;
 
   function getStatusAction() {
     switch (p.status) {
@@ -144,8 +147,17 @@ export function PostCard(props: {
           isFlagged && "bg-amber-50/70 shadow-[0_0_0_1px_rgba(245,158,11,0.12)] dark:bg-amber-500/8",
           props.isHighlighted && "ring-2 ring-primary/45 shadow-[0_0_0_1px_rgba(34,197,94,0.08)]",
           isDraft && "bg-muted/20 [border-style:dashed] [border-left-style:solid]",
+          props.isDeleting && "opacity-70",
         )}
       >
+        {props.isDeleting ? (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div className="inline-flex items-center gap-2 rounded-md border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+              <Spinner className="size-3" />
+              Excluindo...
+            </div>
+          </div>
+        ) : null}
         <div className="ml-1 flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-2.5">
@@ -156,7 +168,7 @@ export function PostCard(props: {
                     type="button"
                     className="inline-flex"
                     onClick={() => setFlagDetailsOpen(true)}
-                    disabled={props.isBusy}
+                    disabled={isItemBusy}
                   >
                     <Badge
                       variant="outline"
@@ -185,7 +197,7 @@ export function PostCard(props: {
                   variant="ghost"
                   size="icon"
                   className="size-8 shrink-0"
-                  disabled={props.isBusy}
+                  disabled={isItemBusy}
                   aria-label={isFlagged ? "Dessinalizar post" : "Sinalizar post"}
                   onClick={() => {
                     if (isFlagged) {
@@ -205,7 +217,7 @@ export function PostCard(props: {
                     variant="ghost"
                     size="icon"
                     className="size-8 shrink-0"
-                    disabled={props.isBusy}
+                    disabled={isItemBusy}
                     aria-label="Opções"
                   >
                     <SlOptionsVertical className="size-4" />
@@ -213,31 +225,31 @@ export function PostCard(props: {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {statusAction && (
-                    <DropdownMenuItem onClick={statusAction.action} disabled={props.isBusy}>
+                    <DropdownMenuItem onClick={statusAction.action} disabled={isItemBusy}>
                       <statusAction.icon className="size-4 shrink-0" />
                       {statusAction.label}
                     </DropdownMenuItem>
                   )}
                   {props.onPreview && (
-                    <DropdownMenuItem onClick={props.onPreview}>
+                    <DropdownMenuItem onClick={props.onPreview} disabled={isItemBusy}>
                       <Eye className="size-4 shrink-0" />
                       Preview
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem asChild>
+                  <DropdownMenuItem asChild disabled={isItemBusy}>
                     <Link href={`/app/posts/${encodeURIComponent(p.postId)}`}>
                       <Pencil className="size-4 shrink-0" />
                       Editar
                     </Link>
                   </DropdownMenuItem>
                   {props.onDuplicate && (
-                    <DropdownMenuItem onClick={props.onDuplicate}>
+                    <DropdownMenuItem onClick={props.onDuplicate} disabled={isItemBusy}>
                       <Copy className="size-4 shrink-0" />
                       Duplicar
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)} disabled={props.isBusy}>
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)} disabled={isItemBusy}>
                     <TrashIcon className="size-4 shrink-0" />
                     Excluir
                   </DropdownMenuItem>
@@ -315,15 +327,23 @@ export function PostCard(props: {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isItemBusy}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isItemBusy}
               onClick={() => {
                 setDeleteOpen(false);
                 props.onDelete();
               }}
             >
-              Excluir
+              {props.isDeleting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="size-3" />
+                  Excluindo...
+                </span>
+              ) : (
+                "Excluir"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

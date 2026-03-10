@@ -39,6 +39,7 @@ type CreateBody = {
   cropY?: number;
   saveAsDraft?: boolean;
   directSchedule?: boolean;
+  channels?: Array<{ platform: string; placement: string }>;
 };
 
 export async function POST(req: Request) {
@@ -84,6 +85,10 @@ export async function POST(req: Request) {
   if (typeof body.directSchedule === "boolean" && body.directSchedule) {
     payload.directSchedule = true;
   }
+
+  if (Array.isArray(body.channels) && body.channels.length > 0) {
+    payload.channels = body.channels;
+  }
   
   if (typeof body.aspectRatio === "string" && body.aspectRatio.trim()) {
     payload.aspectRatio = body.aspectRatio.trim();
@@ -104,4 +109,3 @@ export async function POST(req: Request) {
   const result = await res.json().catch(() => null);
   return NextResponse.json(result ?? { message: "Falha ao criar post." }, { status: res.status });
 }
-

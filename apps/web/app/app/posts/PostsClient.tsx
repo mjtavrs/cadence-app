@@ -65,6 +65,7 @@ export function PostsClient(props: { initialItems: Post[] }) {
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [previewPostId, setPreviewPostId] = useState<string | null>(null);
   const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
 
   type ListResponse = { items: Post[] };
 
@@ -302,11 +303,15 @@ export function PostsClient(props: { initialItems: Post[] }) {
   }
 
   async function deletePost(postId: string) {
+    if (deletingPostId === postId) return;
+    setDeletingPostId(postId);
     try {
       await deleteMutation.mutateAsync(postId);
       toast.success("Post deletado.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao deletar post.");
+    } finally {
+      setDeletingPostId((current) => (current === postId ? null : current));
     }
   }
 
@@ -430,9 +435,9 @@ export function PostsClient(props: { initialItems: Post[] }) {
                     <div key={p.postId} id={`post-${p.postId}`}>
                       <PostCard
                         item={p as unknown as PostListItem}
+                        isDeleting={deletingPostId === p.postId}
                         isBusy={
                           isBusy ||
-                          deleteMutation.isPending ||
                           duplicateMutation.isPending ||
                           flagMutation.isPending ||
                           unflagMutation.isPending

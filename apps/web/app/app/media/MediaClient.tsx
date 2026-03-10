@@ -75,7 +75,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const HELP_MESSAGE =
-  "Se a imagem nÃ£o aparecer, seu navegador pode nÃ£o suportar esse formato (ex.: HEIC em alguns navegadores).";
+  "Se a imagem não aparecer, seu navegador pode não suportar esse formato (ex.: HEIC em alguns navegadores).";
 
 export function MediaUploadAction(props: { initialItems?: MediaItem[] }) {
   const media = useMediaLibrary({ initialItems: props.initialItems });
@@ -152,6 +152,12 @@ const INTERNAL_MEDIA_DRAG_TYPE = "application/x-cadence-media-ids";
 type MediaTypeFilter = "all" | "image" | "video";
 type UploadDateFilter = "all" | "today" | "yesterday" | "last7days" | "lastMonth";
 const BREADCRUMB_ROOT_DROP_KEY = "__root__";
+type FolderUploadFile = { file: File; relativePath: string };
+type FolderUploadSummary = {
+  entries: FolderUploadFile[];
+  roots: Array<{ name: string; count: number; willMerge: boolean }>;
+  targetLabel: string;
+};
 
 type BreadcrumbNode = {
   id: string | null;
@@ -208,6 +214,75 @@ function buildBreadcrumbPath(folders: MediaFolder[], currentFolderId: string | n
   });
 
   return nodes;
+}
+
+type NativeFileWithRelativePath = File & { webkitRelativePath?: string };
+
+function sanitizeRelativePath(input: string) {
+  return input
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+}
+
+function getFolderPathFromRelativePath(relativePath: string) {
+  const cleaned = sanitizeRelativePath(relativePath);
+  const parts = cleaned.split("/");
+  if (parts.length <= 1) return "";
+  return parts.slice(0, -1).join("/");
+}
+
+function normalizeComparableName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+}
+
+type FileSystemEntryLike = {
+  isFile: boolean;
+  isDirectory: boolean;
+  name: string;
+};
+
+type FileSystemFileEntryLike = FileSystemEntryLike & {
+  file: (success: (file: File) => void, error?: (err: unknown) => void) => void;
+};
+
+type FileSystemDirectoryReaderLike = {
+  readEntries: (success: (entries: FileSystemEntryLike[]) => void, error?: (err: unknown) => void) => void;
+};
+
+type FileSystemDirectoryEntryLike = FileSystemEntryLike & {
+  createReader: () => FileSystemDirectoryReaderLike;
+};
+
+async function readAllDirectoryEntries(reader: FileSystemDirectoryReaderLike): Promise<FileSystemEntryLike[]> {
+  const all: FileSystemEntryLike[] = [];
+  while (true) {
+    const entries = await new Promise<FileSystemEntryLike[]>((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    });
+    if (entries.length === 0) return all;
+    all.push(...entries);
+  }
+}
+
+async function walkDroppedEntry(entry: FileSystemEntryLike, prefix: string): Promise<FolderUploadFile[]> {
+  if (entry.isFile) {
+    const fileEntry = entry as FileSystemFileEntryLike;
+    const file = await new Promise<File>((resolve, reject) => {
+      fileEntry.file(resolve, reject);
+    });
+    const relativePath = sanitizeRelativePath(prefix ? `${prefix}/${file.name}` : file.name);
+    return [{ file, relativePath }];
+  }
+  if (!entry.isDirectory) return [];
+
+  const dirEntry = entry as FileSystemDirectoryEntryLike;
+  const nextPrefix = sanitizeRelativePath(prefix ? `${prefix}/${dirEntry.name}` : dirEntry.name);
+  const children = await readAllDirectoryEntries(dirEntry.createReader());
+  const nested = await Promise.all(children.map((child) => walkDroppedEntry(child, nextPrefix)));
+  return nested.flat();
 }
 
 function MediaGrid(props: {
@@ -283,7 +358,7 @@ function MediaGrid(props: {
                 >
               <img
                 src={m.url}
-                alt={m.fileName ?? "MÃ­dia"}
+                alt={m.fileName ?? "Mídia"}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="lazy"
                 onError={(e) => {
@@ -334,7 +409,7 @@ function MediaGrid(props: {
                     size="icon"
                     className="size-8 shrink-0"
                     disabled={isDeleting}
-                    aria-label="OpÃ§Ãµes"
+                    aria-label="Opções"
                   >
                     <SlOptionsVertical className="size-4" />
                   </Button>
@@ -558,7 +633,7 @@ function Lightbox(props: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-in fade-in-0"
       role="dialog"
       aria-modal
-      aria-label="Visualizar mÃ­dia"
+      aria-label="Visualizar mídia"
     >
       <button
         type="button"
@@ -569,7 +644,7 @@ function Lightbox(props: {
       <div className="relative z-10 flex max-h-[90vh] max-w-[90vw] items-center justify-center p-4">
         <img
           src={item.url}
-          alt={item.fileName ?? "MÃ­dia"}
+          alt={item.fileName ?? "Mídia"}
           className="max-h-[90vh] w-auto max-w-full object-contain"
           onClick={(e) => e.stopPropagation()}
         />
@@ -590,10 +665,11 @@ function DropZone(props: {
   children: React.ReactNode;
   onFile: (file: File) => void;
   onFiles?: (files: File[]) => void;
+  onFolderFiles?: (entries: FolderUploadFile[]) => void;
   disabled?: boolean;
   fillHeight?: boolean;
 }) {
-  const { children, onFile, onFiles, disabled, fillHeight } = props;
+  const { children, onFile, onFiles, onFolderFiles, disabled, fillHeight } = props;
   const zoneRef = useRef<HTMLDivElement>(null);
   const dragCountRef = useRef(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -626,12 +702,54 @@ function DropZone(props: {
     e.stopPropagation();
   }
 
-  function handleDrop(e: React.DragEvent) {
+  async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     dragCountRef.current = 0;
     setIsDraggingOver(false);
     if (disabled) return;
+
+    const dataTransferItems = Array.from(e.dataTransfer.items ?? []);
+    const maybeEntries = dataTransferItems
+      .map((item) => {
+        const itemWithEntry = item as DataTransferItem & {
+          webkitGetAsEntry?: () => FileSystemEntryLike | null;
+        };
+        return typeof itemWithEntry.webkitGetAsEntry === "function"
+          ? itemWithEntry.webkitGetAsEntry()
+          : null;
+      })
+      .filter(Boolean) as FileSystemEntryLike[];
+    const hasDirectory = maybeEntries.some((entry) => entry.isDirectory);
+
+    if (hasDirectory && onFolderFiles) {
+      const allEntries = await Promise.all(
+        maybeEntries.map((entry) => walkDroppedEntry(entry, "")),
+      );
+      const folderFiles = allEntries.flat();
+
+      const validEntries: FolderUploadFile[] = [];
+      const invalidFiles: string[] = [];
+      for (const entry of folderFiles) {
+        if (ACCEPTED_TYPES.has(entry.file.type)) {
+          validEntries.push(entry);
+        } else {
+          invalidFiles.push(entry.file.name);
+        }
+      }
+
+      if (invalidFiles.length > 0) {
+        toast.error(
+          `${invalidFiles.length} arquivo(s) com formato não suportado: ${invalidFiles.slice(0, 3).join(", ")}${invalidFiles.length > 3 ? "..." : ""}`,
+        );
+      }
+
+      if (validEntries.length > 0) {
+        onFolderFiles(validEntries);
+      }
+      return;
+    }
+
     const files = Array.from(e.dataTransfer.files ?? []);
     if (files.length === 0) return;
 
@@ -648,7 +766,7 @@ function DropZone(props: {
 
     if (invalidFiles.length > 0) {
       toast.error(
-        `${invalidFiles.length} arquivo(s) com formato nÃ£o suportado: ${invalidFiles.slice(0, 3).join(", ")}${invalidFiles.length > 3 ? "..." : ""}`,
+        `${invalidFiles.length} arquivo(s) com formato não suportado: ${invalidFiles.slice(0, 3).join(", ")}${invalidFiles.length > 3 ? "..." : ""}`,
       );
     }
 
@@ -684,7 +802,7 @@ function DropZone(props: {
           aria-hidden
         >
           <p className="text-muted-foreground text-sm font-medium">
-            Solte os arquivos para fazer upload
+            Solte arquivos ou pastas para fazer upload
           </p>
         </div>
       )}
@@ -728,9 +846,18 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
   const [creatingFolderTempName, setCreatingFolderTempName] = useState<string | null>(null);
   const [creatingFolderParentId, setCreatingFolderParentId] = useState<string | null>(null);
   const [deletingFolderIds, setDeletingFolderIds] = useState<Set<string>>(new Set());
+  const [pendingFolderUpload, setPendingFolderUpload] = useState<FolderUploadSummary | null>(null);
+  const [folderUploadPhase, setFolderUploadPhase] = useState<{
+    step: string;
+    detail?: string;
+    processed?: number;
+    total?: number;
+  } | null>(null);
 
   const emptyFileInputRef = useRef<HTMLInputElement>(null);
+  const emptyFolderInputRef = useRef<HTMLInputElement>(null);
   const contextUploadInputRef = useRef<HTMLInputElement>(null);
+  const contextFolderUploadInputRef = useRef<HTMLInputElement>(null);
   const folderNameInputRef = useRef<HTMLInputElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const cardRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -742,6 +869,29 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
       setShowUploadPanel(true);
     }
   }, [media.uploadProgress.length, uploadProgressIds]);
+
+  useEffect(() => {
+    if (!folderUploadPhase) return;
+    if (!folderUploadPhase.step.startsWith("Enviando")) return;
+    const completed = media.uploadProgress.filter(
+      (item) =>
+        item.status === "success" ||
+        item.status === "replaced" ||
+        item.status === "error" ||
+        item.status === "cancelled",
+    ).length;
+    const total = folderUploadPhase.total ?? 0;
+    setFolderUploadPhase((prev) => {
+      if (!prev || !prev.step.startsWith("Enviando")) return prev;
+      if ((prev.processed ?? 0) === completed && (prev.total ?? 0) === total) return prev;
+      return {
+        ...prev,
+        processed: completed,
+        total,
+        detail: `${Math.min(completed, total)} de ${total}`,
+      };
+    });
+  }, [folderUploadPhase, media.uploadProgress]);
 
   const folderById = useMemo(
     () => new Map(media.folders.map((folder) => [folder.id, folder] as const)),
@@ -1167,6 +1317,109 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
     await media.onPickFiles(files, { folderId: currentFolderId });
   }
 
+  function openFolderUploadSummary(entries: FolderUploadFile[]) {
+    if (entries.length === 0) return;
+    const rootCounts = new Map<string, number>();
+    for (const entry of entries) {
+      const [root] = sanitizeRelativePath(entry.relativePath).split("/");
+      if (!root) continue;
+      rootCounts.set(root, (rootCounts.get(root) ?? 0) + 1);
+    }
+    const siblings = media.folders.filter((folder) => (folder.parentFolderId ?? null) === currentFolderId);
+    const siblingByName = new Map(
+      siblings.map((folder) => [normalizeComparableName(folder.name), folder.id] as const),
+    );
+
+    const roots = Array.from(rootCounts.entries()).map(([name, count]) => ({
+      name,
+      count,
+      willMerge: siblingByName.has(normalizeComparableName(name)),
+    }));
+    const targetLabel = currentFolderId
+      ? folderById.get(currentFolderId)?.name ?? "Pasta atual"
+      : "Biblioteca de mídia";
+
+    setPendingFolderUpload({ entries, roots, targetLabel });
+  }
+
+  async function confirmFolderUpload() {
+    if (!pendingFolderUpload) return;
+    const { entries, roots } = pendingFolderUpload;
+    setPendingFolderUpload(null);
+    if (entries.length === 0) return;
+
+    setFolderUploadPhase({
+      step: "Lendo pasta...",
+      detail: `${entries.length} arquivo(s) detectado(s).`,
+      processed: 0,
+      total: entries.length,
+    });
+
+    try {
+      const folderPaths = Array.from(
+        new Set(
+          entries
+            .map((entry) => getFolderPathFromRelativePath(entry.relativePath))
+            .filter(Boolean),
+        ),
+      );
+
+      setFolderUploadPhase({
+        step: "Mesclando estrutura de pastas...",
+        detail: `Analisando ${folderPaths.length || 1} caminho(s).`,
+        processed: 0,
+        total: entries.length,
+      });
+
+      let folderIdByPath = new Map<string, string>();
+      if (folderPaths.length > 0) {
+        folderIdByPath = await media.resolveFolderTree(folderPaths, currentFolderId);
+      }
+
+      const files = entries.map((entry) => entry.file);
+      const folderIdsByIndex = entries.map((entry) => {
+        const folderPath = getFolderPathFromRelativePath(entry.relativePath);
+        if (!folderPath) return currentFolderId;
+        return folderIdByPath.get(folderPath) ?? currentFolderId;
+      });
+
+      setFolderUploadPhase({
+        step: "Enviando arquivos...",
+        detail: `0 de ${files.length}`,
+        processed: 0,
+        total: files.length,
+      });
+
+      const result = await media.onPickFiles(files, {
+        folderId: currentFolderId,
+        dedupeMode: "replace_by_name_ext",
+        getFolderId: (_file, index) => folderIdsByIndex[index] ?? currentFolderId,
+      });
+
+      setFolderUploadPhase({
+        step: "Finalizando...",
+        detail: "Atualizando biblioteca.",
+        processed: files.length,
+        total: files.length,
+      });
+      await media.refetchFolders();
+
+      const uploaded = result?.uploaded ?? files.length;
+      const replaced = result?.replaced ?? 0;
+      const failed = result?.failed ?? 0;
+
+      if (failed > 0) {
+        toast.warning(
+          `Upload concluído com alertas: ${uploaded} enviado(s), ${replaced} substituído(s), ${failed} falha(s).`,
+        );
+      }
+    } catch {
+      // handled by hook
+    } finally {
+      setFolderUploadPhase(null);
+    }
+  }
+
   async function confirmDeleteFolder() {
     if (!deleteFolderTarget) return;
     const target = deleteFolderTarget;
@@ -1220,8 +1473,58 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
           void handleUploadInputFiles(files);
         }}
       />
+      <input
+        ref={contextFolderUploadInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []) as NativeFileWithRelativePath[];
+          e.target.value = "";
+          const entries = files.map((file) => ({
+            file,
+            relativePath: sanitizeRelativePath(file.webkitRelativePath || file.name),
+          }));
+          openFolderUploadSummary(entries);
+        }}
+      />
 
       {media.error && <p className="text-destructive text-sm">{media.error}</p>}
+
+      {folderUploadPhase && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/55 backdrop-blur-[1px]">
+          <div className="w-[min(92vw,420px)] rounded-xl border bg-background p-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <Spinner className="size-5 text-primary" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">{folderUploadPhase.step}</p>
+                {folderUploadPhase.detail ? (
+                  <p className="text-muted-foreground text-xs">{folderUploadPhase.detail}</p>
+                ) : null}
+              </div>
+            </div>
+            {typeof folderUploadPhase.total === "number" && folderUploadPhase.total > 0 ? (
+              <div className="mt-3">
+                <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+                  <div
+                    className="bg-primary h-full transition-all duration-300"
+                    style={{
+                      width: `${Math.max(
+                        8,
+                        Math.min(
+                          100,
+                          (((folderUploadPhase.processed ?? 0) / folderUploadPhase.total) || 0) * 100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-4">
@@ -1433,6 +1736,9 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
           onFiles={(files) => {
             void media.onPickFiles(files, { folderId: currentFolderId });
           }}
+          onFolderFiles={(entries) => {
+            openFolderUploadSummary(entries);
+          }}
           disabled={dropZoneDisabled}
           fillHeight
         >
@@ -1474,6 +1780,22 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
                           void handleUploadInputFiles(files);
                         }}
                       />
+                      <input
+                        ref={emptyFolderInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files ?? []) as NativeFileWithRelativePath[];
+                          e.target.value = "";
+                          const entries = files.map((file) => ({
+                            file,
+                            relativePath: sanitizeRelativePath(file.webkitRelativePath || file.name),
+                          }));
+                          openFolderUploadSummary(entries);
+                        }}
+                      />
                       <Button
                         size="sm"
                         disabled={media.isBusy || !media.canUpload}
@@ -1487,6 +1809,14 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
                         ) : (
                           "Enviar imagem"
                         )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={media.isBusy || !media.canUpload}
+                        onClick={() => emptyFolderInputRef.current?.click()}
+                      >
+                        Enviar pasta
                       </Button>
                     </EmptyContent>
                   </Empty>
@@ -1574,6 +1904,13 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
                 <LuImagePlus className="mr-2 size-4" />
                 Enviar imagem
               </ContextMenuItem>
+              <ContextMenuItem
+                disabled={media.isBusy || !media.canUpload || isMovingToFolder}
+                onClick={() => contextFolderUploadInputRef.current?.click()}
+              >
+                <FiFolderPlus className="mr-2 size-4" />
+                Enviar pasta
+              </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
 
@@ -1596,6 +1933,52 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
               setDeleteConfirm({ id, fileName });
             }}
           />
+
+          <Dialog open={!!pendingFolderUpload} onOpenChange={(open) => !open && setPendingFolderUpload(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Revisar upload de pasta</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-1">
+                <p className="text-muted-foreground text-sm">
+                  Destino: <span className="text-foreground font-medium">{pendingFolderUpload?.targetLabel}</span>
+                </p>
+                <div className="max-h-52 space-y-2 overflow-y-auto p-1">
+                  {(pendingFolderUpload?.roots ?? []).map((root) => (
+                    <div key={root.name} className="flex items-center justify-between gap-3 rounded-md border px-2 py-1.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{root.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {root.count} arquivo(s)
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs font-medium",
+                          root.willMerge
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-emerald-100 text-emerald-700",
+                        )}
+                      >
+                        {root.willMerge ? "Vai mesclar" : "Vai criar"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Arquivos com o mesmo nome e extensão no mesmo destino serão substituídos.
+                </p>
+              </div>
+              <DialogFooter showCloseButton={false}>
+                <Button variant="outline" onClick={() => setPendingFolderUpload(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => void confirmFolderUpload()}>
+                  Continuar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={!!renameItem} onOpenChange={(open) => !open && setRenameItem(null)}>
             <DialogContent>
