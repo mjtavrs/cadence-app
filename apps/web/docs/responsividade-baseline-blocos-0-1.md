@@ -106,3 +106,50 @@ Aplicado:
   - Mesma estratégia do mensal: rolagem horizontal controlada + largura mínima.
 - `app/calendar/CalendarClient.tsx`
   - Header do calendário com melhor quebra em telas estreitas (`PageTitle` com wrap, `ToggleGroup` fluido).
+
+## Bloco 5 (Componentes transversais) - status parcial
+
+Aplicado:
+
+- `components/ui/date-picker.tsx`
+  - Trigger com largura fluida (`w-full`) em mobile.
+  - Popover com largura limitada à viewport (`min(92vw, 340px)`).
+- `components/ui/emoji-picker.tsx`
+  - Popover com largura fluida (`min(92vw, 360px)`).
+  - Grid de emojis reduz para 7 colunas em mobile e 8 em `sm+`.
+- `components/posts/schedule-post-dialog.tsx`
+  - Dialog com padding responsivo (`p-4` em mobile, `sm:p-6`).
+- `components/posts/media-library-dialog.tsx`
+  - Dialog com largura/padding mais adequados em mobile.
+  - Grade de miniaturas responsiva (`2 -> 3 -> 4` colunas por breakpoint).
+
+Complemento global aplicado:
+
+- `components/ui/popover.tsx`
+  - Conteúdo com `max-w` relativo à viewport e contenção de overflow horizontal.
+- `components/ui/select.tsx`
+  - Conteúdo com `max-w` relativo à viewport.
+  - Viewport interna em modo `popper` com largura mínima limitada à largura da tela.
+- `components/ui/dropdown-menu.tsx`
+  - `DropdownMenuContent` e `DropdownMenuSubContent` com `max-w` relativo à viewport.
+- `components/ui/context-menu.tsx`
+  - `ContextMenuContent` e `ContextMenuSubContent` com `max-w` relativo à viewport.
+
+Status do bloco: concluído.
+
+## Home (hardening dedicado)
+
+Aplicado em:
+
+- `app/app/page.tsx`
+  - Reorganização do grid para tablet (`md:grid-cols-2`) e desktop largo (`xl:grid-cols-3`).
+  - Cards de resumo (`Próximos posts` e `Posts realizados`) passam a ocupar largura total em tablet (`md:col-span-2`).
+  - Ajuste de padding/offset superior para reduzir densidade em mobile.
+- `app/app/_components/home-greeting.tsx`
+  - Escala tipográfica mobile reduzida para evitar excesso de quebra.
+- `app/app/_components/quick-access-card.tsx`
+  - Altura mínima, ícone, espaçamento e CTA adaptados para mobile.
+- `app/app/_components/upcoming-posts-card.tsx`
+  - Header/card mais compactos em mobile e CTA com largura total em telas pequenas.
+- `app/app/_components/posts-activity-card.tsx`
+  - Tipografia dos números e card ajustados para mobile/tablet.

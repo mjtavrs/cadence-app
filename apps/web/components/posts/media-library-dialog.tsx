@@ -146,7 +146,7 @@ export function MediaLibraryDialog(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-4xl" showCloseButton>
+      <DialogContent className="max-w-[calc(100%-1rem)] p-4 sm:max-w-4xl sm:p-6" showCloseButton>
         <DialogHeader className="gap-3">
           <div className="flex items-center justify-between gap-3 pr-8">
             <DialogTitle>Biblioteca de mídia</DialogTitle>
@@ -186,7 +186,7 @@ export function MediaLibraryDialog(props: {
                 Nenhuma mídia disponível. Envie arquivos em Mídia.
               </p>
             ) : (
-              <div className="grid grid-cols-4 gap-3 py-2">
+              <div className="grid grid-cols-2 gap-3 py-2 sm:grid-cols-3 lg:grid-cols-4">
                 {props.media.map((item) => (
                   <button
                     key={item.id}

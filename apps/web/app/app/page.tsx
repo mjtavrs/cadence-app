@@ -193,16 +193,20 @@ export default async function AppHomePage() {
 
   return (
     <Page className="min-h-[calc(100vh-8rem)]">
-      <section className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-5xl flex-col px-4 pt-16">
+      <section className="mx-auto flex min-h-[calc(100vh-8rem)] w-full max-w-5xl flex-col px-1 pt-8 sm:px-4 sm:pt-12 md:pt-14">
         <div className="flex w-full flex-col items-center">
-          <HomeGreeting baseGreeting={baseGreeting} firstName={firstName} className="self-start pl-4" />
+          <HomeGreeting
+            baseGreeting={baseGreeting}
+            firstName={firstName}
+            className="w-full self-start px-3 pb-3 text-left sm:px-0 sm:pb-5"
+          />
 
-          <div className="grid w-full grid-cols-1 items-stretch gap-4 md:grid-cols-3">
+          <div className="grid w-full grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             {quickAccessCards.map((card) => (
               <QuickAccessCard key={card.href} {...card} />
             ))}
-            <UpcomingPostsCard posts={upcomingPostsUi} className="md:col-span-2" />
-            <PostsActivityCard counts={publishedCounts} className="md:col-span-1" />
+            <UpcomingPostsCard posts={upcomingPostsUi} className="md:col-span-2 xl:col-span-2" />
+            <PostsActivityCard counts={publishedCounts} className="md:col-span-2 xl:col-span-1" />
           </div>
         </div>
       </section>

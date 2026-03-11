@@ -80,12 +80,12 @@ export function UpcomingPostsCard({ posts, className }: UpcomingPostsCardProps) 
   return (
     <article
       className={cn(
-        "flex h-full min-h-[260px] w-full flex-col rounded-lg border border-border/70 bg-card p-4 shadow-sm",
+        "flex h-full min-h-[240px] w-full flex-col rounded-lg border border-border/70 bg-card p-3 shadow-sm sm:min-h-[260px] sm:p-4",
         className,
       )}
     >
       <header className="pb-3">
-        <h2 className="text-xl font-semibold text-foreground/90">Próximos posts</h2>
+        <h2 className="text-lg font-semibold text-foreground/90 sm:text-xl">Próximos posts</h2>
       </header>
 
       {!hasPosts ? (
@@ -99,8 +99,8 @@ export function UpcomingPostsCard({ posts, className }: UpcomingPostsCardProps) 
           />
           <p className="mt-3 text-sm text-muted-foreground">Nada agendado ainda...</p>
           <p className="mt-1 text-base text-muted-foreground">Que tal criarmos algo novo?</p>
-          <div className="mt-4">
-            <Button asChild>
+          <div className="mt-4 w-full sm:w-auto">
+            <Button asChild className="w-full sm:w-auto">
               <Link href="/app/posts/new">Criar post</Link>
             </Button>
           </div>
@@ -129,8 +129,8 @@ export function UpcomingPostsCard({ posts, className }: UpcomingPostsCardProps) 
       )}
 
       {hasPosts ? (
-        <div className="mt-auto pt-5 flex justify-end">
-          <Button asChild>
+        <div className="mt-auto flex justify-stretch pt-5 sm:justify-end">
+          <Button asChild className="w-full sm:w-auto">
             <Link href="/app/posts">Ver lista de posts</Link>
           </Button>
         </div>

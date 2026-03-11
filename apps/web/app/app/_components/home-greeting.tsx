@@ -11,7 +11,7 @@ export function HomeGreeting({ baseGreeting, firstName, className, nameClassName
   return (
     <h1
       className={cn(
-        "max-w-4xl pb-5 text-balance text-center text-4xl leading-tight font-medium tracking-tight sm:text-5xl lg:text-6xl",
+        "max-w-4xl pb-5 text-balance text-center text-3xl leading-tight font-medium tracking-tight sm:text-4xl lg:text-6xl",
         className,
       )}
     >

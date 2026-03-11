@@ -71,7 +71,7 @@ export function EmojiPicker(props: { onSelect(emoji: string): void }) {
           <SmileIcon className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[360px] p-0">
+      <PopoverContent align="end" className="w-[min(92vw,360px)] p-0">
         <div className="border-b px-4 py-3">
           <div className="text-sm font-medium">Emojis</div>
         </div>
@@ -92,7 +92,7 @@ export function EmojiPicker(props: { onSelect(emoji: string): void }) {
                   <div className="text-muted-foreground px-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
                     {section.label}
                   </div>
-                  <div className="grid grid-cols-8 gap-2">
+                  <div className="grid grid-cols-7 gap-2 sm:grid-cols-8">
                     {section.items.map((item) => (
                       <button
                         key={`${item.order}-${item.name}`}

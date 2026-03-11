@@ -359,6 +359,7 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
               imageAlt={selectedMedia?.fileName ?? "Mídia selecionada"}
               aspectRatio={aspectRatio}
               cropData={cropData}
+              className="max-w-none"
               onAspectRatioChange={(value) => {
                 setAspectRatio(value);
                 setCropData((prev) => ({
