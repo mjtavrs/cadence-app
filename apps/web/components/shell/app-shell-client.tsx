@@ -29,7 +29,7 @@ export function AppShellClient(props: {
   return (
     <WorkspaceRoleProvider role={props.workspaceRole}>
     <div className="min-h-screen bg-background">
-      <div className="flex w-full">
+      <div className="flex w-full min-w-0">
         <Sidebar
           collapsed={sidebar.collapsed}
           user={props.user}
@@ -66,7 +66,7 @@ export function AppShellClient(props: {
             onToggleDesktopSidebar={sidebar.toggle}
             onOpenMobileSidebar={() => setMobileOpen(true)}
           />
-          <main className="min-w-0 p-4 md:p-6">{props.children}</main>
+          <main className="min-w-0 p-3 sm:p-4 md:p-6">{props.children}</main>
         </div>
       </div>
     </div>

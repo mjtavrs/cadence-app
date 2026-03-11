@@ -165,8 +165,8 @@ export function Topbar(props: {
 
   return (
     <>
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b bg-background/80 px-4 backdrop-blur">
-        <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-20 flex min-h-14 items-center justify-between gap-2 border-b bg-background/80 px-3 py-2 backdrop-blur sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
           <Button
             className="md:hidden"
             variant="ghost"
@@ -213,14 +213,21 @@ export function Topbar(props: {
             ) : null}
           </button>
 
-          <div className="flex flex-col leading-tight">
+          <div className="flex min-w-0 flex-col leading-tight">
             <div className="text-muted-foreground text-xs">Workspace atual</div>
-            {props.workspaceName ? <div className="text-sm font-medium">{props.workspaceName}</div> : null}
+            {props.workspaceName ? (
+              <div className="truncate text-sm font-medium">{props.workspaceName}</div>
+            ) : null}
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <Button variant="secondary" size="sm" onClick={() => setWorkspaceDialogOpen(true)}>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="max-w-[45vw] truncate sm:max-w-none"
+            onClick={() => setWorkspaceDialogOpen(true)}
+          >
             Ver meus workspaces
           </Button>
           <Button asChild variant="ghost" size="icon" aria-label="Abrir configurações">
