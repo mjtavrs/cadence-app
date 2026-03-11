@@ -311,8 +311,8 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
         </PageActions>
       </PageHeader>
 
-      <div className="mx-auto grid max-w-[1060px] gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <Card className="p-4">
+      <div className="mx-auto grid max-w-[1060px] gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="p-3 sm:p-4">
           <div className="space-y-4">
             <div className="rounded-xl border bg-muted/20 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -322,8 +322,15 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
                     Envie uma nova imagem ou escolha outra da biblioteca.
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" disabled={uploadPending} onClick={() => fileInputRef.current?.click()}>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    disabled={uploadPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     {uploadPending ? (
                       <span className="inline-flex items-center gap-2">
                         <Spinner data-icon="inline-start" />
@@ -333,7 +340,14 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
                       "Enviar imagem"
                     )}
                   </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={uploadPending} onClick={openLibraryDialog}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    disabled={uploadPending}
+                    onClick={openLibraryDialog}
+                  >
                     Biblioteca
                   </Button>
                 </div>
@@ -360,7 +374,7 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
           </div>
         </Card>
 
-        <Card className="h-fit p-4">
+        <Card className="h-fit p-3 sm:p-4">
           <div className="space-y-5">
             <Alert className="border-amber-300/70 bg-amber-50 text-amber-900 [&>svg]:text-amber-700">
               <AlertTitle>No MVP, cada post aceita 1 imagem.</AlertTitle>
@@ -415,7 +429,7 @@ export function EditPostClient(props: { initialPost: EditablePost; initialMedia:
               <div className="text-sm font-medium">Data e hora da publicação</div>
               {canScheduleOnSave ? (
                 scheduledAtUtc ? (
-                  <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
                     <span className="text-muted-foreground">{formatRecifeDateTimeShort(scheduledAtUtc)}</span>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setScheduleModalOpen(true)}>
                       Alterar

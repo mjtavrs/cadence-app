@@ -91,3 +91,4 @@ Aplicado:
 - `app/posts/new` com card principal fluido em mobile (`w-full` + `max-w-[732px]`).
 - `components/posts/create/step-create-post.tsx` com layout em coluna em mobile/tablet e coluna lateral fixa apenas em `xl`.
 - `components/posts/posts-filters-bar.tsx` com busca e botão de filtro fluidos em mobile e popover com largura responsiva (`min(92vw, 420px)`).
+- `app/posts/[id]/post-edit-client.tsx` com espaçamento responsivo e ações de mídia (`Enviar imagem`/`Biblioteca`) em coluna no mobile.

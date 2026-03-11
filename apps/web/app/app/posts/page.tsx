@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 import { PostsClient, type Post } from "./PostsClient";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Page, PageActions, PageDescription, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
+import { Page, PageActions, PageHeader, PageHeaderText, PageTitle } from "@/components/page/page";
 
 export const metadata: Metadata = {
   title: "Posts",
@@ -44,4 +44,3 @@ export default async function PostsPage() {
     </Page>
   );
 }
-
