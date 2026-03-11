@@ -1,0 +1,26 @@
+version: 1
+applications:
+  - appRoot: apps/web
+    frontend:
+      buildPath: /
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+            - |
+              cat > apps/web/.env.production <<EOF
+              CADENCE_API_BASE_URL=$CADENCE_API_BASE_URL
+              CADENCE_COOKIE_SECURE=$CADENCE_COOKIE_SECURE
+              CADENCE_COOKIE_DOMAIN=$CADENCE_COOKIE_DOMAIN
+              EOF
+        build:
+          commands:
+            - npm run build --workspace apps/web
+      artifacts:
+        baseDirectory: apps/web/.next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - apps/web/.next/cache/**/*
