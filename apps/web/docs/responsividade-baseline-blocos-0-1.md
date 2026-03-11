@@ -92,3 +92,17 @@ Aplicado:
 - `components/posts/create/step-create-post.tsx` com layout em coluna em mobile/tablet e coluna lateral fixa apenas em `xl`.
 - `components/posts/posts-filters-bar.tsx` com busca e botão de filtro fluidos em mobile e popover com largura responsiva (`min(92vw, 420px)`).
 - `app/posts/[id]/post-edit-client.tsx` com espaçamento responsivo e ações de mídia (`Enviar imagem`/`Biblioteca`) em coluna no mobile.
+
+## Bloco 4 (Calendário) - status
+
+Aplicado:
+
+- `app/calendar/week-view.tsx`
+  - Grid semanal com largura mínima por coluna de dia.
+  - Contêiner externo com `overflow-x-auto` para mobile/tablet sem comprimir eventos.
+- `app/calendar/month-view.tsx`
+  - Visão mensal com `overflow-x-auto` e largura mínima do grid para preservar legibilidade.
+- `app/calendar/month-infinite-view.tsx`
+  - Mesma estratégia do mensal: rolagem horizontal controlada + largura mínima.
+- `app/calendar/CalendarClient.tsx`
+  - Header do calendário com melhor quebra em telas estreitas (`PageTitle` com wrap, `ToggleGroup` fluido).

@@ -51,6 +51,7 @@ const START_HOUR = 6;
 const END_HOUR = 22;
 
 const LEFT_COL_WIDTH = 72;
+const DAY_COL_MIN_WIDTH = 144;
 const TOP_PADDING = 10;
 const HOUR_HEIGHT = 80;
 const PX_PER_MIN = HOUR_HEIGHT / 60;
@@ -207,6 +208,7 @@ export function WeekCalendarView(props: {
 
   const totalMinutes = (END_HOUR - START_HOUR) * 60;
   const contentHeight = TOP_PADDING + Math.round(totalMinutes * PX_PER_MIN) + EVENT_HEIGHT + 2;
+  const gridTemplateColumns = `${LEFT_COL_WIDTH}px repeat(7, minmax(${DAY_COL_MIN_WIDTH}px, 1fr))`;
   const todayKey = useMemo(() => recifeDayKeyFromUtcDate(new Date()) ?? "", []);
 
   function clearSelectedEvent() {
@@ -356,10 +358,11 @@ export function WeekCalendarView(props: {
         </p>
       )}
 
-      <div className="bg-card">
-        <div className={cn("grid border-b bg-background/80 px-0 py-0 backdrop-blur")} style={{ gridTemplateColumns: `${LEFT_COL_WIDTH}px 1fr` }}>
+      <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="min-w-[1080px]">
+        <div className={cn("grid border-b border-zinc-300 dark:border-zinc-700 bg-background/80 px-0 py-0 backdrop-blur")} style={{ gridTemplateColumns }}>
           <div className="text-muted-foreground px-2 py-2 text-[11px] font-medium">Hora</div>
-          <div className="grid grid-cols-7">
+          <>
             {days.map((d) => {
               const parts = getRecifePartsFromIsoUtc(d.toISOString());
               const dayKey = parts ? recifeDayKey(parts) : "";
@@ -372,15 +375,15 @@ export function WeekCalendarView(props: {
                 </div>
               );
             })}
-          </div>
+          </>
         </div>
 
         <ScrollArea className="h-[calc(100vh-300px)] min-h-[520px]">
           <div
             className={cn("grid")}
-            style={{ gridTemplateColumns: `${LEFT_COL_WIDTH}px 1fr` }}
+            style={{ gridTemplateColumns }}
           >
-            <div className="sticky left-0 z-10 border-r border-border/60 bg-background/80 backdrop-blur">
+            <div className="sticky left-0 z-10 border-r border-zinc-300 dark:border-zinc-700 bg-background/80 backdrop-blur">
               <div className="relative" style={{ height: contentHeight }}>
                 {hourLabels.map((h) => {
                   const top = TOP_PADDING + Math.round(((h - START_HOUR) * 60) * PX_PER_MIN);
@@ -393,7 +396,7 @@ export function WeekCalendarView(props: {
               </div>
             </div>
 
-            <div className="grid grid-cols-7">
+            <>
               {days.map((d, idx) => {
                 const dayParts = getRecifePartsFromIsoUtc(d.toISOString());
                 const key = dayParts
@@ -462,12 +465,12 @@ export function WeekCalendarView(props: {
                       void pasteIntoIso(target);
                     }}
                   >
-                    <div className={cn("border-r", "border-border/60", isLastCol && "border-r-0")}>
+                    <div className={cn("border-r", "border-zinc-300 dark:border-zinc-700", isLastCol && "border-r-0")}>
                       <div className="relative" style={{ height: contentHeight }}>
                         {hourLines.map((h) => {
                           const top = TOP_PADDING + Math.round(((h - START_HOUR) * 60) * PX_PER_MIN);
                           return (
-                            <div key={h} className="absolute left-0 right-0 z-0 border-t border-border/50" style={{ top }} />
+                            <div key={h} className="absolute left-0 right-0 z-0 border-t border-zinc-300 dark:border-zinc-700" style={{ top }} />
                           );
                         })}
 
@@ -523,9 +526,10 @@ export function WeekCalendarView(props: {
                   </CalendarCellContextMenu>
                 );
               })}
-            </div>
+            </>
           </div>
         </ScrollArea>
+        </div>
       </div>
 
       <PostPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} post={selected} />
