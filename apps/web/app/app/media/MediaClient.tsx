@@ -1691,7 +1691,7 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
       </div>
 
       {showSelectionToolbar && (
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border bg-background px-4 py-3 shadow-lg animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-4 left-3 right-3 z-50 flex flex-wrap items-center gap-3 rounded-lg border bg-background px-3 py-3 shadow-lg animate-in slide-in-from-bottom-4 sm:left-auto sm:right-4 sm:px-4">
           {showDeletingState ? (
             <>
               <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />

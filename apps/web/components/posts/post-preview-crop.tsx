@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RatioIcon } from "lucide-react";
+import { RxMove } from "react-icons/rx";
 
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
-const PREVIEW_SIZE_MAX = 700;
+const PREVIEW_SIZE_FALLBACK = 700;
 
 export type PreviewAspectRatio = "original" | "1:1" | "4:5" | "16:9";
 
@@ -38,26 +39,21 @@ function getFrameSize(
   viewportSize: number
 ): { width: number; height: number } {
   const max = viewportSize;
+  if (naturalWidth <= 0 || naturalHeight <= 0) return { width: max, height: max };
+
+  const coverScale = Math.max(viewportSize / naturalWidth, viewportSize / naturalHeight);
+
   switch (aspect) {
-    case "1:1": {
-      if (naturalWidth <= 0 || naturalHeight <= 0) return { width: max, height: max };
-      if (naturalWidth <= viewportSize && naturalHeight <= viewportSize) return { width: max, height: max };
-      const scale = Math.max(viewportSize / naturalWidth, viewportSize / naturalHeight);
+    case "1:1":
+    case "original":
       return {
-        width: Math.round(naturalWidth * scale),
-        height: Math.round(naturalHeight * scale),
+        width: Math.round(naturalWidth * coverScale),
+        height: Math.round(naturalHeight * coverScale),
       };
-    }
     case "4:5":
       return { width: max, height: Math.round(max * (5 / 4)) };
     case "16:9":
       return { width: Math.round(max * (16 / 9)), height: max };
-    case "original": {
-      if (naturalWidth <= 0 || naturalHeight <= 0) return { width: max, height: max };
-      const r = naturalWidth / naturalHeight;
-      if (r >= 1) return { width: max, height: Math.round(max / r) };
-      return { width: Math.round(max * r), height: max };
-    }
   }
 }
 
@@ -97,8 +93,11 @@ export function PostPreviewCrop(props: {
   const [panY, setPanY] = useState(0);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [dragging, setDragging] = useState(false);
-  const [viewportSize, setViewportSize] = useState(PREVIEW_SIZE_MAX);
+  const [viewportSize, setViewportSize] = useState(PREVIEW_SIZE_FALLBACK);
+  const [requiresExplicitUnlock, setRequiresExplicitUnlock] = useState(false);
+  const [isAdjustUnlocked, setIsAdjustUnlocked] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lockInitializedRef = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const lastCropRef = useRef<CropData | null>(null);
   const onCropChangeRef = useRef(onCropChange);
@@ -113,24 +112,45 @@ export function PostPreviewCrop(props: {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const { width } = entries[0]?.contentRect ?? { width: PREVIEW_SIZE_MAX };
-      const size = Math.min(PREVIEW_SIZE_MAX, Math.max(200, Math.round(width)));
-      setViewportSize(size);
+      const { width } = entries[0]?.contentRect ?? { width: PREVIEW_SIZE_FALLBACK };
+      // Keep JS measurements aligned with the real rendered width of the DOM.
+      setViewportSize(Math.max(1, Math.round(width)));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(pointer: coarse)");
+    const applyMode = () => {
+      const requiresUnlock = mediaQuery.matches;
+      setRequiresExplicitUnlock(requiresUnlock);
+      if (!lockInitializedRef.current) {
+        setIsAdjustUnlocked(!requiresUnlock);
+        lockInitializedRef.current = true;
+      }
+    };
+
+    applyMode();
+    mediaQuery.addEventListener("change", applyMode);
+    return () => mediaQuery.removeEventListener("change", applyMode);
+  }, []);
+
+  useEffect(() => {
+    if (!imageSrc) return;
+    const frame = window.requestAnimationFrame(() => {
+      setIsAdjustUnlocked(!requiresExplicitUnlock);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [imageSrc, requiresExplicitUnlock]);
+
   const frameSize = getFrameSize(aspectRatio, naturalSize.width, naturalSize.height, viewportSize);
   const overflowX = Math.max(0, frameSize.width - viewportSize);
   const overflowY = Math.max(0, frameSize.height - viewportSize);
   const canPan = overflowX > 0 || overflowY > 0;
-  const useContain1_1 =
-    aspectRatio === "1:1" &&
-    naturalSize.width > 0 &&
-    naturalSize.height > 0 &&
-    naturalSize.width <= viewportSize &&
-    naturalSize.height <= viewportSize;
+  const canEditImage = !requiresExplicitUnlock || isAdjustUnlocked;
 
   useEffect(() => {
     let frame = 0;
@@ -254,13 +274,13 @@ export function PostPreviewCrop(props: {
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!canPan || !imageSrc) return;
+      if (!canPan || !imageSrc || !canEditImage) return;
       e.preventDefault();
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       setDragging(true);
       dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
     },
-    [canPan, imageSrc, panX, panY]
+    [canPan, canEditImage, imageSrc, panX, panY]
   );
 
   const handlePointerMove = useCallback(
@@ -307,7 +327,7 @@ export function PostPreviewCrop(props: {
               <img
                 src={imageSrc}
                 alt={imageAlt ?? "Prévia"}
-                className={cn("h-full w-full select-none", useContain1_1 ? "object-contain" : "object-cover")}
+                className="h-full w-full select-none object-cover"
                 draggable={false}
                 onLoad={(e) => {
                   const img = e.currentTarget;
@@ -319,7 +339,8 @@ export function PostPreviewCrop(props: {
               role="presentation"
               className={cn(
                 "absolute inset-0 z-10 touch-none",
-                canPan && "cursor-grab active:cursor-grabbing"
+                canPan && canEditImage && "cursor-grab active:cursor-grabbing",
+                !canEditImage && "pointer-events-none"
               )}
               style={{ touchAction: "none" }}
               onPointerDown={handlePointerDown}
@@ -328,7 +349,21 @@ export function PostPreviewCrop(props: {
               onPointerLeave={handlePointerUp}
               onPointerCancel={handlePointerUp}
             />
-            {showAspectRatioControl ? (
+            {!canEditImage ? (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/10 backdrop-blur-[2px]">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-2 rounded-full border border-white/45 bg-white/75 px-4 shadow-md backdrop-blur-md hover:bg-white/90 dark:border-white/20 dark:bg-zinc-900/55 dark:hover:bg-zinc-900/70"
+                onClick={() => setIsAdjustUnlocked(true)}
+              >
+                <RxMove className="size-4" />
+                Ajustar imagem
+              </Button>
+            </div>
+            ) : null}
+            {showAspectRatioControl && canEditImage ? (
             <div className="absolute bottom-2 left-2 z-20">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

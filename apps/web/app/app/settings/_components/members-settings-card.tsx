@@ -61,7 +61,7 @@ export function MembersSettingsCard(props: {
                       onValueChange={(role) => props.onChangeRole(member.userId, role as WorkspaceMember["role"])}
                       disabled={!canEditMember || busy}
                     >
-                      <SelectTrigger size="sm" className="w-[130px]">
+                      <SelectTrigger size="sm" className="w-full sm:w-[130px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

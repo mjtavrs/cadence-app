@@ -37,7 +37,7 @@ export function DatePicker(props: {
           data-empty={!date}
           disabled={props.disabled}
           className={cn(
-            "data-[empty=true]:text-muted-foreground w-[212px] justify-between text-left font-normal",
+            "data-[empty=true]:text-muted-foreground w-full min-w-0 justify-between text-left font-normal sm:w-[212px]",
             props.triggerClassName,
           )}
         >
@@ -45,7 +45,7 @@ export function DatePicker(props: {
           <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-[min(92vw,340px)] p-0" align="start">
         <Calendar
           mode="single"
           selected={date}

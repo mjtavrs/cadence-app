@@ -19,10 +19,6 @@ export function CalendarClient(props: { initialWeek?: WeekBucket }) {
   const [week, setWeek] = useState<WeekBucket>(
     props.initialWeek ?? getIsoWeekBucketRecife(new Date())
   );
-  const [monthDateUtc] = useState<Date>(() => {
-    const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12, 0, 0));
-  });
   const [activeMonth, setActiveMonth] = useState<MonthBucket>(() =>
     getMonthBucketRecife(new Date()) as MonthBucket
   );
@@ -56,7 +52,7 @@ export function CalendarClient(props: { initialWeek?: WeekBucket }) {
     <Page>
       <PageHeader>
         <PageHeaderText>
-          <PageTitle className="flex items-center gap-2">
+          <PageTitle className="flex flex-wrap items-center gap-2">
             {monthYearLabel}
             {view === "week" && (
               <span className="text-muted-foreground text-sm font-normal">
@@ -75,6 +71,7 @@ export function CalendarClient(props: { initialWeek?: WeekBucket }) {
                 if (v === "month") setActiveMonth(monthBucket);
               }
             }}
+            className="w-full sm:w-auto"
             variant="outline"
             size="sm"
             spacing={0}

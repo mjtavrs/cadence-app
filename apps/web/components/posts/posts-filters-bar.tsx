@@ -115,7 +115,7 @@ export function PostsFiltersBar(props: {
           placeholder="Buscar por título ou código"
           value={props.searchQuery}
           onChange={(e) => props.onSearchQueryChange(e.target.value)}
-          className="min-w-[200px] max-w-[320px] flex-1 sm:max-w-[280px]"
+          className="w-full min-w-0 sm:max-w-[280px] sm:flex-1"
         />
 
         <Popover
@@ -130,7 +130,7 @@ export function PostsFiltersBar(props: {
           }}
         >
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="w-full justify-center gap-2 sm:w-auto">
               <TbFilterSearch className="size-4" />
               Filtros
               {hasActiveFilters ? (
@@ -142,7 +142,7 @@ export function PostsFiltersBar(props: {
               ) : null}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto min-w-[280px]" align="start">
+          <PopoverContent className="w-[min(92vw,420px)]" align="start">
             <div className="space-y-4">
               <FieldSet>
                 <FieldLegend variant="label">Status</FieldLegend>

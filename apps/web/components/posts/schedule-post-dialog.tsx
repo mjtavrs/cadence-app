@@ -134,7 +134,7 @@ export function SchedulePostDialog(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="p-4 sm:max-w-[520px] sm:p-6">
         <DialogHeader>
           <DialogTitle>{isSelectionOnly ? "Definir data e hora" : "Agendar post"}</DialogTitle>
         </DialogHeader>

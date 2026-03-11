@@ -429,8 +429,9 @@ export function MonthInfiniteCalendarView(props: {
 
   return (
     <>
-      <div className="bg-card">
-        <div className="grid grid-cols-7 border-b bg-background/80 px-2 py-2 backdrop-blur">
+      <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="min-w-[840px]">
+        <div className="grid grid-cols-7 border-b border-zinc-300 dark:border-zinc-700 bg-background/80 px-2 py-2 backdrop-blur">
           {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((w) => (
             <div key={w} className="text-muted-foreground px-1 text-[11px] font-medium">
               {w}
@@ -479,7 +480,7 @@ export function MonthInfiniteCalendarView(props: {
                         <div
                           className={cn(
                             "min-h-[200px] px-1.5 pb-2",
-                            "border-border/40 border-r border-b",
+                            "border-zinc-300 dark:border-zinc-700 border-r border-b",
                             isLastCol && "border-r-0",
                           )}
                         >
@@ -560,6 +561,7 @@ export function MonthInfiniteCalendarView(props: {
               })}
             </div>
           </ScrollArea>
+        </div>
         </div>
       </div>
 
