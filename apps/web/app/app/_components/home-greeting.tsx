@@ -15,7 +15,7 @@ export function HomeGreeting({ baseGreeting, firstName, className, nameClassName
         className,
       )}
     >
-      <span className="text-[#191919]">{baseGreeting}</span>
+      <span className="text-[#191919] pl-2">{baseGreeting}</span>
       {firstName ? (
         <>
           {", "}
