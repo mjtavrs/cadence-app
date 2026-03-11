@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PanelLeftIcon } from "lucide-react";
+import { BriefcaseBusiness, PanelLeftIcon } from "lucide-react";
 import { IoSettingsOutline } from "react-icons/io5";
 import { toast } from "sonner";
 
@@ -214,18 +214,28 @@ export function Topbar(props: {
           </button>
 
           <div className="flex min-w-0 flex-col leading-tight">
-            <div className="text-muted-foreground text-xs">Workspace atual</div>
+            <div className="text-muted-foreground hidden text-xs sm:block">Workspace atual</div>
             {props.workspaceName ? (
               <div className="truncate text-sm font-medium">{props.workspaceName}</div>
             ) : null}
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            variant="secondary"
+            size="icon"
+            className="sm:hidden"
+            onClick={() => setWorkspaceDialogOpen(true)}
+            aria-label="Ver meus workspaces"
+            title="Ver meus workspaces"
+          >
+            <BriefcaseBusiness className="h-4 w-4" />
+          </Button>
           <Button
             variant="secondary"
             size="sm"
-            className="max-w-[45vw] truncate sm:max-w-none"
+            className="hidden sm:inline-flex md:max-w-[34vw] lg:max-w-none"
             onClick={() => setWorkspaceDialogOpen(true)}
           >
             Ver meus workspaces

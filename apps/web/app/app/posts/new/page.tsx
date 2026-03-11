@@ -304,7 +304,10 @@ export default function NewPostPage() {
             />
           </div>
         ) : (
-          <Card key={step} className={cn("flex w-[732px] max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-hidden p-4", transitionClass)}>
+          <Card
+            key={step}
+            className={cn("flex w-full max-w-[732px] shrink-0 flex-col overflow-hidden p-3 sm:p-4", transitionClass)}
+          >
             <StepHeader
               step={step}
               canAdvance={canAdvance}

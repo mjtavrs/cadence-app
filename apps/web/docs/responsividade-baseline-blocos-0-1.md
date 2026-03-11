@@ -65,3 +65,29 @@ Objetivo: criar base responsiva sem alterar regras de negócio e sem regressão 
 - Fluxo de criação/edição de post com larguras fixas.
 - Calendário com grade de 7 colunas sem estratégia mobile dedicada.
 - Popovers/inputs com larguras mínimas rígidas em partes da listagem de posts.
+
+## Bloco 2 (Topbar/Navegação) - status
+
+Aplicado em `components/shell/topbar.tsx`:
+
+- Em mobile, o botão "Ver meus workspaces" vira botão `icon` para reduzir congestionamento horizontal.
+- Em `sm+`, mantém botão textual.
+- Label "Workspace atual" agora aparece apenas em `sm+` para priorizar espaço em telas muito estreitas.
+- Nome do workspace permanece com `truncate`.
+- Grupo de ações da direita ficou `shrink-0` para evitar sobreposição com o bloco esquerdo.
+
+## Bloco 2.1 (Sidebar mobile) - status
+
+Aplicado em `components/shell/app-shell-client.tsx`:
+
+- No cabeçalho da Sidebar mobile (sheet), removido o bloco textual:
+  `Cadence` + nome do workspace.
+- No lugar, exibido o logo do Cadence com suporte a tema claro/escuro, alinhado ao padrão visual desktop.
+
+## Bloco 3 (Posts - início) - status parcial
+
+Aplicado:
+
+- `app/posts/new` com card principal fluido em mobile (`w-full` + `max-w-[732px]`).
+- `components/posts/create/step-create-post.tsx` com layout em coluna em mobile/tablet e coluna lateral fixa apenas em `xl`.
+- `components/posts/posts-filters-bar.tsx` com busca e botão de filtro fluidos em mobile e popover com largura responsiva (`min(92vw, 420px)`).

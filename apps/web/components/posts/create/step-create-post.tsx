@@ -33,8 +33,8 @@ export function StepCreatePost(props: {
   }, []);
 
   return (
-    <div className="flex flex-wrap items-start gap-5">
-      <div className="w-full min-w-0 max-w-[700px] flex-1">
+    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:gap-5">
+      <div className="w-full min-w-0 xl:max-w-[700px] xl:flex-1">
         <div>
           <PostPreviewCrop
             imageSrc={props.imageSrc}
@@ -48,7 +48,7 @@ export function StepCreatePost(props: {
       </div>
 
       <Card
-        className={`w-[340px] shrink-0 p-4 h-fit transition-all duration-300 ease-out ${
+        className={`h-fit w-full p-4 transition-all duration-300 ease-out xl:w-[340px] xl:shrink-0 ${
           panelVisible
             ? "translate-x-0 opacity-100"
             : "translate-x-4 opacity-0"
