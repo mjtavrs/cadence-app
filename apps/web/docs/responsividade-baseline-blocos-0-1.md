@@ -153,3 +153,25 @@ Aplicado em:
   - Header/card mais compactos em mobile e CTA com largura total em telas pequenas.
 - `app/app/_components/posts-activity-card.tsx`
   - Tipografia dos números e card ajustados para mobile/tablet.
+
+## Bloco 6 (QA final + hardening) - status
+
+Aplicado:
+
+- `app/app/settings/_components/unsaved-changes-bar.tsx`
+  - Barra flutuante com layout em coluna no mobile e botões de largura total.
+- `components/media/upload-progress-panel.tsx`
+  - Painel fixo de upload adaptado para viewport pequena (`left/right` em mobile, `w-80` em desktop).
+- `app/app/media/MediaClient.tsx`
+  - Toolbar fixa de seleção com comportamento responsivo em mobile.
+- `components/posts/create/step-header.tsx`
+  - Título central com `truncate` e largura máxima responsiva para evitar sobreposição.
+- `app/app/settings/_components/members-settings-card.tsx`
+  - Select de role fluido em mobile.
+- `components/ui/sheet.tsx`
+  - Drawer lateral com `max-w` mais confortável em telas pequenas (`88vw`).
+
+Validação técnica:
+
+- Lint direcionado dos arquivos alterados.
+- Build completo (`apps/web`) concluído.

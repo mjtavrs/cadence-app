@@ -39,7 +39,7 @@ export function StepHeader(props: {
         ) : null}
       </div>
 
-      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base font-normal">
+      <span className="pointer-events-none absolute left-1/2 max-w-[calc(100%-9rem)] -translate-x-1/2 truncate text-sm font-normal sm:max-w-[calc(100%-12rem)] sm:text-base">
         {STEP_TITLES[step]}
       </span>
 

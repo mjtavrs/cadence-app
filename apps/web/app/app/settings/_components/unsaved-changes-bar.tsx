@@ -18,19 +18,19 @@ export function UnsavedChangesBar(props: {
       ].join(" ")}
       aria-hidden={!props.visible}
     >
-      <div className="bg-background/95 flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 shadow-lg backdrop-blur">
-        <div className="space-y-1">
+      <div className="bg-background/95 flex w-full max-w-3xl flex-col gap-3 rounded-md border px-4 py-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1">
           <p className="text-sm">
             <span className="font-medium">Atenção</span> - você fez alterações que ainda não foram salvas.
           </p>
           {props.errorMessage ? <p className="text-xs text-red-600">{props.errorMessage}</p> : null}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" onClick={props.onDiscard} disabled={props.saving}>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={props.onDiscard} disabled={props.saving}>
             Descartar alterações
           </Button>
-          <Button type="button" onClick={props.onSave} disabled={props.saving}>
+          <Button type="button" className="w-full sm:w-auto" onClick={props.onSave} disabled={props.saving}>
             {props.saving ? (
               <span className="inline-flex items-center gap-2">
                 <Spinner data-icon="inline-start" />

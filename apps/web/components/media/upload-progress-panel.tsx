@@ -69,7 +69,7 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
   return (
     <div
       className={cn(
-        "fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-background shadow-xl transition-all duration-300",
+        "fixed bottom-4 left-3 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-lg border bg-background shadow-xl transition-all duration-300 sm:left-auto sm:right-4 sm:w-80",
         "animate-in slide-in-from-bottom-4 fade-in-0",
       )}
       style={{ bottom: selectedCount > 0 ? "100px" : "16px" }}
@@ -167,4 +167,3 @@ export function UploadProgressPanel({ uploads, onCancel, onClose, selectedCount 
     </div>
   );
 }
-

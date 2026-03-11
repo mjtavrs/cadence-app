@@ -46,9 +46,9 @@ function SheetContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { side?: SheetSide }) {
   const sideClass =
     side === "left"
-      ? "inset-y-0 left-0 h-full w-[320px] max-w-[80vw] border-r data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left"
+      ? "inset-y-0 left-0 h-full w-[320px] max-w-[88vw] border-r data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left"
       : side === "right"
-        ? "inset-y-0 right-0 h-full w-[320px] max-w-[80vw] border-l data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
+        ? "inset-y-0 right-0 h-full w-[320px] max-w-[88vw] border-l data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right"
         : side === "top"
           ? "inset-x-0 top-0 w-full border-b data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top"
           : "inset-x-0 bottom-0 w-full border-t data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom";
