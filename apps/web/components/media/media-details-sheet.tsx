@@ -1,14 +1,13 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Pencil, Copy, TrashIcon, ExternalLink } from "lucide-react";
+import { Eye, Pencil, Copy, TrashIcon } from "lucide-react";
 import { formatFileSize } from "@/lib/file-utils";
-import { formatDateAndTime } from "@/lib/datetime";
+import { formatYmdPtBr } from "@/lib/datetime";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import type { MediaItem } from "@/hooks/use-media-library";
 import { FaImage, FaVideo } from "react-icons/fa";
 
@@ -55,15 +54,6 @@ export function MediaDetailsSheet({
 
   if (!item) return null;
 
-  const handleCopyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(item.url);
-      toast.success("URL copiada para a área de transferência.");
-    } catch {
-      toast.error("Falha ao copiar URL.");
-    }
-  };
-
   const handleCopyFileName = async () => {
     if (!item.fileName) return;
     try {
@@ -82,19 +72,24 @@ export function MediaDetailsSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full max-w-md overflow-y-auto p-0 sm:max-w-lg">
-        <SheetHeader className="p-4 border-b">
+        <SheetHeader className="border-b p-4">
           <SheetTitle className="text-lg">Detalhes da mídia</SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col">
-          {/* Preview */}
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded-lg overflow-hidden min-h-[300px] max-h-[400px]">
+          <div className="border-b p-4">
+            <button
+              type="button"
+              className="flex min-h-[300px] max-h-[400px] w-full items-center justify-center overflow-hidden rounded-lg bg-zinc-100 outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0 dark:bg-zinc-900 disabled:cursor-default enabled:cursor-pointer"
+              onClick={() => onRequestView?.(item)}
+              disabled={!onRequestView}
+              aria-label="Abrir visualização da mídia"
+            >
               {isImageType(item.contentType) ? (
                 <img
                   src={item.url}
                   alt={item.fileName ?? "Mídia"}
-                  className="max-w-full max-h-full object-contain"
+                  className="h-full w-full object-cover"
                   onLoad={handleImageLoad}
                   onError={(e) => {
                     const el = e.currentTarget as HTMLImageElement;
@@ -104,7 +99,7 @@ export function MediaDetailsSheet({
               ) : isVideoType(item.contentType) ? (
                 <video
                   src={item.url}
-                  className="max-w-full max-h-full"
+                  className="h-full w-full object-cover"
                   controls
                   preload="metadata"
                 />
@@ -114,11 +109,10 @@ export function MediaDetailsSheet({
                   <p className="text-muted-foreground text-sm">Preview não disponível</p>
                 </div>
               )}
-            </div>
+            </button>
           </div>
 
-          {/* Informações */}
-          <div className="p-4 space-y-4">
+          <div className="space-y-4 p-4">
             <div>
               <h3 className="mb-3 text-sm font-semibold">Informações</h3>
               <div className="space-y-3">
@@ -163,37 +157,11 @@ export function MediaDetailsSheet({
 
                 <div>
                   <label className="text-muted-foreground text-xs font-medium">Data de upload</label>
-                  <p className="mt-1 text-sm font-medium">{formatDateAndTime(item.createdAt)}</p>
-                </div>
-
-                <div>
-                  <label className="text-muted-foreground text-xs font-medium">URL</label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <p className="flex-1 truncate font-mono text-xs break-all">{item.url}</p>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      onClick={handleCopyUrl}
-                      aria-label="Copiar URL"
-                    >
-                      <Copy className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      onClick={() => window.open(item.url, "_blank")}
-                      aria-label="Abrir URL em nova aba"
-                    >
-                      <ExternalLink className="size-3.5" />
-                    </Button>
-                  </div>
+                  <p className="mt-1 text-sm font-medium">{formatYmdPtBr(new Date(item.createdAt))}</p>
                 </div>
               </div>
             </div>
 
-            {/* Ações */}
             <div className="border-t pt-4">
               <h3 className="mb-3 text-sm font-semibold">Ações</h3>
               <div className="flex flex-wrap gap-2">

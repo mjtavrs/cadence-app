@@ -74,6 +74,7 @@ export function AppShellClient(props: {
             workspaceName={props.workspaceName}
             workspaceLogoUrl={props.workspaceLogoUrl}
             canManageWorkspace={props.workspaceRole === "OWNER" || props.workspaceRole === "ADMIN"}
+            sidebarCollapsed={sidebar.collapsed}
             onToggleDesktopSidebar={sidebar.toggle}
             onOpenMobileSidebar={() => setMobileOpen(true)}
           />

@@ -23,7 +23,7 @@ export function Sidebar(props: {
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-background md:flex",
         "transition-all duration-300 ease-in-out",
-        props.collapsed ? "w-[72px]" : "w-[260px]",
+        props.collapsed ? "w-[72px]" : "w-[300px]",
       )}
     >
       <div
