@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
-import { formatFileSize } from "@/lib/file-utils";
 import { cn } from "@/lib/utils";
 import type { AppShellUser } from "./app-shell-client";
 import { ProfileModal } from "./profile-modal";
@@ -22,6 +21,28 @@ type StorageSummary = {
   bytesUsed: number;
   bytesLimit: number;
 };
+
+function formatStorageMegabytes(bytes: number) {
+  const megabytes = bytes / (1024 * 1024);
+  return Number.isInteger(megabytes) ? `${megabytes} MB` : `${megabytes.toFixed(1)} MB`;
+}
+
+function formatStorageUsage(bytes: number) {
+  if (bytes === 0) return "0 MB";
+
+  const units = ["B", "KB", "MB", "GB"] as const;
+  const unitIndex = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+  );
+  const value = bytes / 1024 ** unitIndex;
+  const formatter = new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: unitIndex === 0 ? 0 : 1,
+    maximumFractionDigits: unitIndex === 0 ? 0 : 1,
+  });
+
+  return `${formatter.format(value)} ${units[unitIndex]}`;
+}
 
 async function loadStorageSummary(): Promise<StorageSummary> {
   const res = await fetch("/api/media/summary", { cache: "no-store" });
@@ -112,7 +133,8 @@ export function SidebarUserBlock(props: {
                 <p className="text-sm text-muted-foreground">Resumo indisponível.</p>
               ) : storageSummary ? (
                 <p className="text-sm font-medium">
-                  {formatFileSize(storageSummary.bytesUsed)} de {formatFileSize(storageSummary.bytesLimit)}
+                  {formatStorageUsage(storageSummary.bytesUsed)} de{" "}
+                  {formatStorageMegabytes(storageSummary.bytesLimit)} utilizados
                 </p>
               ) : null}
             </div>

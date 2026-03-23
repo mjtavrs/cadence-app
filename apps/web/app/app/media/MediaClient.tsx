@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useId, useRef, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -414,7 +415,7 @@ function MediaGrid(props: {
                     <SlOptionsVertical className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="min-w-56">
                   <DropdownMenuItem onClick={() => props.onRequestView(m)}>
                     <Eye className="size-4" />
                     Visualizar
@@ -616,32 +617,68 @@ function Lightbox(props: {
   onClose: () => void;
 }) {
   const { item, onClose } = props;
+  const [isVisible, setIsVisible] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     if (!item) return;
+    setIsVisible(false);
+    const frame = window.requestAnimationFrame(() => {
+      setIsVisible(true);
+    });
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        setIsVisible(false);
+      }
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [item, onClose]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [item]);
 
-  if (!item) return null;
+  useEffect(() => {
+    if (!item || isVisible) return;
+    const timeout = window.setTimeout(() => {
+      onClose();
+    }, 200);
+    return () => window.clearTimeout(timeout);
+  }, [isVisible, item, onClose]);
 
-  return (
+  if (!item || !portalReady) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-in fade-in-0"
+      className={cn(
+        "fixed inset-0 z-[60] flex items-center justify-center bg-black/80 transition-opacity duration-200",
+        isVisible ? "opacity-100" : "opacity-0",
+      )}
+      onClick={(e) => e.stopPropagation()}
       role="dialog"
       aria-modal
       aria-label="Visualizar mídia"
     >
       <button
         type="button"
-        onClick={onClose}
+        onClick={() => setIsVisible(false)}
+        onPointerDown={(e) => e.stopPropagation()}
         className="absolute inset-0 z-0"
         aria-label="Fechar"
       />
-      <div className="relative z-10 flex max-h-[90vh] max-w-[90vw] items-center justify-center p-4">
+      <div
+        className={cn(
+          "relative z-10 flex max-h-[90vh] max-w-[90vw] items-center justify-center p-4 transition-all duration-200 ease-out",
+          isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0",
+        )}
+      >
         <img
           src={item.url}
           alt={item.fileName ?? "Mídia"}
@@ -649,7 +686,8 @@ function Lightbox(props: {
           onClick={(e) => e.stopPropagation()}
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1916,14 +1954,16 @@ export function MediaClient(props: { initialItems?: MediaItem[] }) {
 
           {viewingItem && <Lightbox item={viewingItem} onClose={() => setViewingItem(null)} />}
 
-          <MediaDetailsSheet
-            open={!!detailsItem}
-            onOpenChange={(open) => !open && setDetailsItem(null)}
-            item={detailsItem}
-            onRequestView={(item) => {
-              setDetailsItem(null);
-              setViewingItem(item);
-            }}
+            <MediaDetailsSheet
+              open={!!detailsItem}
+              onOpenChange={(open) => {
+                if (!open && viewingItem) return;
+                if (!open) setDetailsItem(null);
+              }}
+              item={detailsItem}
+              onRequestView={(item) => {
+                setViewingItem(item);
+              }}
             onRequestRename={(item) => {
               setDetailsItem(null);
               openRename(item);

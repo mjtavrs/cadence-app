@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BriefcaseBusiness, PanelLeftIcon } from "lucide-react";
 import { IoSettingsOutline } from "react-icons/io5";
+import {
+  TbLayoutSidebarLeftCollapseFilled,
+  TbLayoutSidebarLeftExpandFilled,
+} from "react-icons/tb";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -70,6 +74,7 @@ export function Topbar(props: {
   workspaceName: string | null;
   workspaceLogoUrl: string | null;
   canManageWorkspace: boolean;
+  sidebarCollapsed: boolean;
   onOpenMobileSidebar(): void;
   onToggleDesktopSidebar(): void;
 }) {
@@ -183,7 +188,11 @@ export function Topbar(props: {
             onClick={props.onToggleDesktopSidebar}
             aria-label="Alternar sidebar"
           >
-            <PanelLeftIcon className="h-4 w-4" />
+            {props.sidebarCollapsed ? (
+              <TbLayoutSidebarLeftExpandFilled className="size-6" />
+            ) : (
+              <TbLayoutSidebarLeftCollapseFilled className="size-6" />
+            )}
           </Button>
 
           <input
